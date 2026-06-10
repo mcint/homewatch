@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Release notes from core</title>
+  <entry>
+    <id>tag:github.com,2008:Repository/12888993/2026.4.3</id>
+    <updated>2026-04-16T09:00:00Z</updated>
+    <published>2026-04-16T09:00:00Z</published>
+    <link rel="alternate" type="text/html" href="https://github.com/home-assistant/core/releases/tag/2026.4.3"/>
+    <title>2026.4.3</title>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/12888993/2026.5.0b1</id>
+    <updated>2026-04-30T12:00:00Z</updated>
+    <published>2026-04-30T12:00:00Z</published>
+    <link rel="alternate" type="text/html" href="https://github.com/home-assistant/core/releases/tag/2026.5.0b1"/>
+    <title>2026.5.0b1</title>
+  </entry>
+</feed>

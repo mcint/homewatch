@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Data / secrets
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+.env
+
+# OS
+.DS_Store

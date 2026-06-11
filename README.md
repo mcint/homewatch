@@ -125,6 +125,9 @@ uv run pytest
 Not on PyPI — install or run straight from GitHub:
 
 ```bash
+# choose your fighter:  uvx (one-off) · uv tool install (onto PATH) · pip
+# choose your edition:   homewatch · homewatch[probe] (pyatv) · homewatch[all] (+zeroconf)
+
 # one-off, no install (uv):
 uvx --from git+https://github.com/mcint/homewatch homewatch --help
 #   …with on-LAN probing for this run:

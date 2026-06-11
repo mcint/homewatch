@@ -88,6 +88,27 @@ def test_enroll_list_status_retire():
     assert "esp-1" in runner.invoke(app, ["devices", "list", "--retired"]).output
 
 
+def test_devices_search_smartcase_and_regex():
+    runner.invoke(app, ["enroll", "AA:BB", "homepod", "--name", "Bedroom"])
+    runner.invoke(app, ["enroll", "esp-1", "esphome", "--name", "porch"])
+    # smartcase: lowercase matches case-insensitively
+    out = runner.invoke(app, ["devices", "list", "bedroom"]).output
+    assert "AA:BB" in out and "esp-1" not in out
+    # uppercase → case-sensitive (no match for the lowercase 'porch')
+    assert "esp-1" not in runner.invoke(app, ["devices", "list", "PORCH"]).output
+    assert "esp-1" in runner.invoke(app, ["devices", "list", "porch"]).output
+    # regex across fields (kind)
+    assert "esp-1" in runner.invoke(app, ["devices", "list", "esp.*me|homepod"]).output
+
+
+def test_releases_help_summary_is_terse():
+    # Top-level help shows the short summary; the caveats live in `releases --help`.
+    top = runner.invoke(app, ["--help"]).output
+    assert "List releases." in top
+    assert "time flows down" not in top  # caveat not in the top-level listing
+    assert "time flows down" in runner.invoke(app, ["releases", "--help"]).output
+
+
 def test_enroll_unknown_kind_rejected():
     r = runner.invoke(app, ["enroll", "x", "toaster"])
     assert r.exit_code != 0 and "unknown kind" in r.output

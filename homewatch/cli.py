@@ -141,6 +141,32 @@ def _product_arg():
                           help="Product id (see `homewatch products`).")
 
 
+def _flatten_values(d: dict):
+    for v in d.values():
+        if isinstance(v, dict):
+            yield from (str(x) for x in v.values())
+        elif isinstance(v, (list, tuple)):
+            yield from (str(x) for x in v)
+        elif v is not None:
+            yield str(v)
+
+
+def _search(rows: list[dict], pattern: str | None) -> list[dict]:
+    """Filter rows whose any field matches `pattern`. Regex if valid, else literal
+    substring; smartcase (case-insensitive unless the pattern has an uppercase)."""
+    if not pattern:
+        return rows
+    cased = any(c.isupper() for c in pattern)
+    try:
+        rx = re.compile(pattern, 0 if cased else re.IGNORECASE)
+        hit = rx.search
+    except re.error:
+        needle = pattern if cased else pattern.lower()
+        hit = (lambda h: needle in h) if cased else (lambda h: needle in h.lower())
+    return [d for d in rows
+            if hit(" ".join(v for v in _flatten_values(d)))]
+
+
 def _validate_kind(value: str | None) -> str | None:
     if value is None or value in DEVICE_KINDS:
         return value
@@ -312,9 +338,12 @@ def releases(
     reverse: bool = typer.Option(False, "-r", "--reverse", help="Newest first."),
     urls: bool = typer.Option(False, "-u", "--urls", help="Show upstream URLs."),
 ) -> None:
-    """List releases oldest-first, so time flows down to the newest by the prompt
-    (-r for newest-first). Defaults to the last 3 months, stable; widen with
-    --channel all and/or --since 0."""
+    """List releases.
+
+    Oldest-first, so time flows down to the newest line nearest the prompt
+    (`-r` for newest-first). Defaults to the last 3 months, stable; widen with
+    `--channel all` and/or `--since 0`. (See the flags below.)
+    """
     since_eff = parse_since(since)
     channel_eff = None if channel == "all" else channel
     rows = _run(lambda b: b.releases(product=product, since=since_eff, until=None,
@@ -463,12 +492,20 @@ def probe_history_cmd(
 
 @devices_app.command("list")
 def devices_list_cmd(
+    pattern: str = typer.Argument(
+        None, help="Filter: matches any field (smartcase; regex if valid)."),
     kind: str = typer.Option(None, callback=_validate_kind,
                              autocompletion=_complete_kind),
     retired: bool = typer.Option(False, "--retired", help="Include retired."),
 ) -> None:
-    """List enrolled devices with their detected version."""
-    rows = _run(lambda b: b.devices_list(kind=kind, include_retired=retired))
+    """List enrolled devices with their detected version.
+
+    PATTERN filters across all fields (id, name, version, model, IP, SSID, …):
+    case-insensitive unless it has an uppercase letter (smartcase); a valid
+    regex is matched as a regex, otherwise as a literal substring.
+    """
+    rows = _search(_run(lambda b: b.devices_list(kind=kind, include_retired=retired)),
+                   pattern)
     if not rows:
         typer.echo("no devices yet — run `homewatch probe ha|homepods`")
         return

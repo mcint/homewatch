@@ -68,6 +68,9 @@ class Release:
     notes: str | None = None
 
 
+DEVICE_KINDS = ("homepod", "home_assistant", "esphome", "custom")
+
+
 @dataclass(slots=True)
 class Probe:
     target_kind: str  # 'home_assistant' | 'homepod'
@@ -76,6 +79,29 @@ class Probe:
     extra: dict[str, Any] | None = None  # serialized to extra_json on insert
     error: str | None = None
     probed_at: str | None = None  # set at insert if None
+    # Network context for the sighting (spec §13).
+    device_id: str | None = None
+    ssid: str | None = None
+    ip: str | None = None
+    subnet: str | None = None
+    mac: str | None = None
+
+
+@dataclass(slots=True)
+class Device:
+    device_id: str
+    kind: str
+    product: str | None = None
+    name: str | None = None
+    identifiers: dict[str, Any] = field(default_factory=dict)
+    enrolled_at: str | None = None
+    last_seen_at: str | None = None
+    last_version: str | None = None
+    status: str = "active"
+    ssid: str | None = None
+    subnet: str | None = None
+    ip: str | None = None
+    notes: str | None = None
 
 
 @dataclass(slots=True)

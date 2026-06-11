@@ -775,3 +775,52 @@ Not every release we discover has a publishable date. Handling, in order:
 
 This lives in the display layer (`timeline.derive_date`); the stored
 `released_at` is left NULL when unknown rather than fabricated.
+
+---
+
+## 13. Devices (v1.2)
+
+`releases` are versions *available* upstream; **devices** are the things we
+track a *running* version / presence for. A device is anything: a HomePod, the
+HA instance, an ESPHome node, or a self-reporting app — the model is generic so
+it extends past Apple/HA.
+
+### 13.1 Model (`devices` table, migration 002)
+
+Identity is a stable synthetic `device_id` with an `identifiers` JSON blob
+(MAC, mDNS name, pyatv id, …) — future-flexible, not MAC-locked.
+
+```
+device_id (pk) · kind (homepod|home_assistant|esphome|custom) · product (→ releases)
+name · identifiers(JSON) · enrolled_at · last_seen_at · last_version · status(active|retired)
+ssid · subnet · ip · notes
+```
+
+Each probe row gains network context: `device_id, ssid, ip, subnet, mac` — so
+"which MAC, on which WiFi / L2 range / IP, when" is answerable per sighting.
+
+### 13.2 Lifecycle (CRUD-ish)
+
+- **enroll** — register/rename a device. Probes **auto-enroll** unknown devices
+  on first sighting and write an `enrolled` event to the shared event log (so
+  detections appear on the timeline).
+- **probe / sighting** — `record_sighting` upserts `last_seen_at`,
+  `last_version`, and network context, and inserts the probe row.
+- **view** — `devices list/show/history`; the list shows each device's detected
+  version (and, with status, whether it's behind the latest release).
+- **retire** — mark a device dead/gone (`status='retired'`, logged); hidden from
+  the default list, kept for history.
+
+### 13.3 Surface (v0.4 reorg — hybrid groups)
+
+Top level keeps synthesis/action verbs; nouns become groups (common commands
+keep top-level aliases):
+
+```
+status                 # per device: running version vs latest available
+timeline · fetch · watch · enroll · info · serve
+releases  → list · latest · show · refresh · sources · products
+devices   → list · show · probe · scan · history · retire
+log (til) → down · up · note
+```
+

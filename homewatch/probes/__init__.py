@@ -26,8 +26,9 @@ def insert_probe(conn: sqlite3.Connection, probe: Probe) -> int:
     extra_json = json.dumps(probe.extra) if probe.extra is not None else None
     cur = conn.execute(
         "INSERT INTO probes"
-        " (probed_at, target_kind, target_id, version, extra_json, error)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
+        " (probed_at, target_kind, target_id, version, extra_json, error,"
+        "  device_id, ssid, ip, subnet, mac)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             probed_at,
             probe.target_kind,
@@ -35,6 +36,11 @@ def insert_probe(conn: sqlite3.Connection, probe: Probe) -> int:
             probe.version,
             extra_json,
             probe.error,
+            probe.device_id,
+            probe.ssid,
+            probe.ip,
+            probe.subnet,
+            probe.mac,
         ),
     )
     return int(cur.lastrowid)

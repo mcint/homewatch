@@ -78,7 +78,8 @@ def test_homepod_notes_parse_fixture():
     versions = {r.version for r in releases}
     assert {"18.4", "18.3"} <= versions
     v184 = next(r for r in releases if r.version == "18.4")
-    assert v184.released_at == "2026-04-15"
+    # This page carries notes but not dates; date comes from apple_security.
+    assert v184.released_at is None
     assert v184.notes
 
 
@@ -140,6 +141,23 @@ async def test_apple_developer_404_tolerated(db, httpx_mock):
 def test_unknown_source_rejected():
     with pytest.raises(KeyError):
         sources.select_sources("nope")
+
+
+def test_upsert_gap_fills_across_sources(db):
+    from homewatch.models import Release
+
+    # homepod_notes lands first: notes, no date.
+    assert base.upsert_release(db, Release(
+        product="homepod_software", version="18.4", channel="stable",
+        source="homepod_notes", notes="Adds crossfade.")) is True
+    # apple_security lands second: date, no notes. Not "new", but back-fills date.
+    assert base.upsert_release(db, Release(
+        product="homepod_software", version="18.4", channel="stable",
+        source="apple_security", released_at="2026-04-15", title="HomePod Software 18.4",
+    )) is False
+    row = base.latest_release(db, "homepod_software")
+    assert row["released_at"] == "2026-04-15"  # filled by apple_security
+    assert row["notes"] == "Adds crossfade."   # preserved from homepod_notes
 
 
 def test_latest_release(db):

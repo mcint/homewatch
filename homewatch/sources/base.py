@@ -158,17 +158,35 @@ def conditional_headers(state: SourceState) -> dict[str, str]:
 
 
 def upsert_release(conn: sqlite3.Connection, r: Release) -> bool:
-    """Insert a release, ignoring duplicates. Returns True if newly inserted.
+    """Insert a release; if it already exists, gap-fill its NULL columns.
 
-    Idempotent: re-running a refresh over unchanged upstreams inserts nothing.
+    Returns True only when a *new* row is inserted (so refresh counts stay
+    honest and idempotent). The gap-fill merges complementary sources without
+    clobbering existing data: e.g. apple_security supplies a HomePod release
+    date while homepod_notes supplies the notes — COALESCE keeps both, in
+    whichever order the two refreshes run (spec §3.4/§3.6).
     """
     channel = r.channel or "stable"
-    cur = conn.execute(
+    existing = conn.execute(
+        "SELECT id FROM releases WHERE product=? AND version=? AND channel=?",
+        (r.product, r.version, channel),
+    ).fetchone()
+    if existing is not None:
+        conn.execute(
+            "UPDATE releases SET"
+            "  released_at = COALESCE(released_at, ?),"
+            "  title       = COALESCE(title, ?),"
+            "  url         = COALESCE(url, ?),"
+            "  notes       = COALESCE(notes, ?)"
+            " WHERE id = ?",
+            (r.released_at, r.title, r.url, r.notes, existing["id"]),
+        )
+        return False
+    conn.execute(
         "INSERT INTO releases"
         " (product, version, channel, released_at, title, url, source, raw_id,"
         "  notes, discovered_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        " ON CONFLICT(product, version, channel) DO NOTHING",
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             r.product,
             r.version,
@@ -182,7 +200,7 @@ def upsert_release(conn: sqlite3.Connection, r: Release) -> bool:
             utcnow(),
         ),
     )
-    return cur.rowcount == 1
+    return True
 
 
 def list_releases(

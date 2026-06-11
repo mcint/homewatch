@@ -17,7 +17,7 @@ import httpx
 from selectolax.parser import HTMLParser
 
 from ..models import Release, SourceState
-from .base import conditional_headers, parse_human_date, sha1
+from .base import conditional_headers, sha1
 
 logger = logging.getLogger("homewatch.sources.homepod_notes")
 
@@ -29,10 +29,12 @@ URL = "https://support.apple.com/en-us/108045"
 _VERSION_HEADER_RE = re.compile(
     r"Software version\s+(\d+(?:\.\d+)*)", re.IGNORECASE
 )
-# A date appearing in the notes body, e.g. "January 22, 2026" or "22 January 2026".
-_DATE_IN_TEXT_RE = re.compile(
-    r"\b(?:[A-Z][a-z]+ \d{1,2}, \d{4}|\d{1,2} [A-Z][a-z]+ \d{4})\b"
-)
+
+# Note: this page publishes version + notes but NOT per-version release dates
+# (the text under each header is prose). HomePod dates come from the Apple
+# security source (§3.4); upsert_release gap-fills date and notes across the two
+# sources into one row, so we deliberately leave released_at=None here rather
+# than risk a false date scraped out of the notes prose.
 
 _NOTES_CAP = 1000
 
@@ -74,14 +76,12 @@ class HomePodNotesSource:
             body_start = m.end()
             body_end = markers[i + 1].start() if i + 1 < len(markers) else len(text)
             body = text[body_start:body_end].strip()
-            date_m = _DATE_IN_TEXT_RE.search(body)
-            released_at = parse_human_date(date_m.group(0)) if date_m else None
             out.append(
                 Release(
                     product="homepod_software",
                     version=version,
                     channel="stable",
-                    released_at=released_at,
+                    released_at=None,  # not published on this page; see note above
                     title=f"HomePod Software {version}",
                     url=self.url,
                     source=self.name,

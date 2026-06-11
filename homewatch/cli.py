@@ -286,18 +286,16 @@ def releases(
                                 help="Product id (see `homewatch products`)."),
     since: str = typer.Option(
         "3M", help="How far back: relative span (3M, 2w, 1d, 2y …) or ISO date; "
-                   "0 or --all = all time."),
-    channel: str = typer.Option("stable", help="Channel filter; ignored with --all."),
-    all_: bool = typer.Option(False, "--all", help="All channels + all time."),
+                   "0 = all time."),
+    channel: str = typer.Option(
+        "stable", help="Channel: stable | beta | rc | all."),
     reverse: bool = typer.Option(False, "-r", "--reverse", help="Oldest first."),
     urls: bool = typer.Option(False, "-u", "--urls", help="Show upstream URLs."),
 ) -> None:
-    """List releases, newest first. Defaults to the last 3 months, stable
-    (widen with --since 0 / 1y, or --all)."""
-    if all_:
-        since_eff, channel_eff = None, None
-    else:
-        since_eff, channel_eff = parse_since(since), channel
+    """List releases, newest first. Defaults to the last 3 months, stable; widen
+    with --channel all and/or --since 0."""
+    since_eff = parse_since(since)
+    channel_eff = None if channel == "all" else channel
     rows = _run(lambda b: b.releases(product=product, since=since_eff, until=None,
                                      channel=channel_eff))
     if reverse:  # rows arrive newest-first; flip for oldest-first

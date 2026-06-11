@@ -133,7 +133,9 @@ def test_releases_channel_and_window(httpx_mock):
     # excludes the beta; --all (all time + channels) surfaces it.
     out = runner.invoke(app, ["releases", "--since", "0"]).output
     assert "2026.4.3" in out and "2026.5.0b1" not in out
-    assert "2026.5.0b1" in runner.invoke(app, ["releases", "--all"]).output
+    # --channel all surfaces the beta too.
+    beta = runner.invoke(app, ["releases", "--since", "0", "--channel", "all"]).output
+    assert "2026.5.0b1" in beta
     # --since narrows by relative span (fixture dates are old, so 1d → empty).
     assert "2026.4.3" not in runner.invoke(app, ["releases", "--since", "1d"]).output
 

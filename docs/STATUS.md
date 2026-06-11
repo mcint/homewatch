@@ -54,6 +54,10 @@ release (available upstream)  ⋈  deployed (running on device)  →  timeline (
 
 ## Releases
 
+Tag every release version (verbose by design). Annotated tags mark the
+structural `.0` bumps (big UX/shape changes, *not* "polished"); patches are
+lightweight. Patch-bump per commit.
+
 `v0.1.0` daemon-first v1 · `v0.2.x` CLI-first + endoflife + grammar ·
 `v0.3.x` XDG/data-root, relative `--since`, time-flows-down, URL fixes ·
 `v0.4.x` device inventory, `status`, display names + search, pyatv fix,

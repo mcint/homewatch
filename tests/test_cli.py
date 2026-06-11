@@ -107,11 +107,17 @@ def test_unknown_product_rejected_with_hint():
 
 
 def test_products_lists_vocabulary():
+    from homewatch.models import PRODUCT_PAGE, PRODUCTS
+    # Every product has a canonical page (no gaps).
+    assert set(PRODUCT_PAGE) == set(PRODUCTS)
     r = runner.invoke(app, ["products"])
     assert r.exit_code == 0
     for pid in ("homepod_software", "tvos", "home_assistant_core"):
         assert pid in r.output
     assert "tracks tvOS" in r.output
+    # Per-product canonical links are shown.
+    assert "endoflife.date/tvos" in r.output
+    assert "support.apple.com/en-us/108045" in r.output
 
 
 def test_releases_default_window_is_recent_stable(httpx_mock):

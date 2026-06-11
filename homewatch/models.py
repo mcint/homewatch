@@ -38,6 +38,22 @@ PRODUCT_LABELS = {
     "safari": "Safari",
 }
 
+# Canonical "where to read about this product" page per product — the most
+# particular link available (endoflife.date has no /apple umbrella, so Apple OSes
+# point at their per-product endoflife pages; HomePod/HA/Safari at their sources).
+PRODUCT_PAGE = {
+    "home_assistant_core": "https://github.com/home-assistant/core/releases",
+    "home_assistant_os": "https://github.com/home-assistant/operating-system/releases",
+    "homepod_software": "https://support.apple.com/en-us/108045",
+    "ios": "https://endoflife.date/ios",
+    "ipados": "https://endoflife.date/ipados",
+    "macos": "https://endoflife.date/macos",
+    "tvos": "https://endoflife.date/tvos",
+    "watchos": "https://endoflife.date/watchos",
+    "visionos": "https://endoflife.date/visionos",
+    "safari": "https://developer.apple.com/documentation/safari-release-notes",
+}
+
 
 @dataclass(slots=True)
 class Release:

@@ -33,6 +33,14 @@ Canonical `releases.product` ids (also `homewatch products`):
 | HomePod Software       | `support.apple.com/en-us/108045`                             |
 | Apple OS dates         | `endoflife.date/api/{ios,ipados,macos,tvos,watchos,visionos}`|
 
+## Per-product canonical pages
+
+`models.PRODUCT_PAGE` maps each product to its most particular "read more" page,
+surfaced by `homewatch products`. endoflife.date has **no `/apple` umbrella**
+(it 404s; `/?tag=apple` is not a real filter), so Apple OSes point at their
+per-product endoflife pages (`endoflife.date/{ios,tvos,…}`); HomePod → the
+notes page; HA → GitHub releases; Safari → Apple's Safari release notes.
+
 ## tvOS ↔ HomePod (load-bearing fact)
 
 **HomePod software is built on tvOS and shares its version numbers** (HomePod

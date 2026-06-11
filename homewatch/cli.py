@@ -20,7 +20,7 @@ import typer
 from . import __version__
 from .client import Backend, get_backend
 from .config import config_root, env_files, get_settings
-from .models import PRODUCT_LABELS, PRODUCTS
+from .models import PRODUCT_LABELS, PRODUCT_PAGE, PRODUCTS
 
 _DURATION_RE = re.compile(r"^\s*(\d+)\s*([smhd]?)\s*$", re.IGNORECASE)
 _DURATION_UNIT = {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -369,7 +369,8 @@ def products() -> None:
     for pid, row in _run(fn):
         latest = (f"{row['version']} {row.get('date_display', '')}".strip()
                   if row else "—")
-        typer.echo(f"{pid:<22} {PRODUCT_LABELS.get(pid, ''):<32} {latest}")
+        typer.echo(f"{pid:<22} {PRODUCT_LABELS.get(pid, ''):<32} "
+                   f"{latest:<26} {PRODUCT_PAGE.get(pid, '')}")
 
 
 @app.command(rich_help_panel=P_META)

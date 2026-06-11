@@ -81,6 +81,18 @@ def test_apple_security_resolves_relative_hrefs():
     assert rels[0].url == "https://support.apple.com/en-us/127118"
 
 
+def test_migration_003_absolutizes_stored_relative_urls(db):
+    from homewatch.db import MIGRATIONS_DIR
+    # A relative URL persisted by an older version (bypassing the parser).
+    db.execute(
+        "INSERT INTO releases (product, version, channel, source, url, discovered_at)"
+        " VALUES ('tvos', '9.9', 'stable', 'apple_security', '/en-us/99999', '2026-01-01')"
+    )
+    db.executescript((MIGRATIONS_DIR / "003_absolute_urls.sql").read_text())
+    row = db.execute("SELECT url FROM releases WHERE version='9.9'").fetchone()
+    assert row["url"] == "https://support.apple.com/en-us/99999"
+
+
 def test_homepod_notes_parse_fixture():
     html = (FIX / "homepod_notes.html").read_text()
     releases = HomePodNotesSource().parse(html)

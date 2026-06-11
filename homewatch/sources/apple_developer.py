@@ -9,6 +9,7 @@ fatal.
 from __future__ import annotations
 
 import re
+from urllib.parse import urljoin
 
 import feedparser
 import httpx
@@ -95,7 +96,8 @@ class AppleDeveloperSource:
             rel = parse_title((entry.get("title") or "").strip())
             if rel is None:
                 continue
-            rel.url = entry.get("link")
+            link = entry.get("link")
+            rel.url = urljoin("https://developer.apple.com/", link) if link else None
             rel.released_at = feed_published_iso(entry)
             out.append(rel)
         return out

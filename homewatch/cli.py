@@ -289,16 +289,17 @@ def releases(
                    "0 = all time."),
     channel: str = typer.Option(
         "stable", help="Channel: stable | beta | rc | all."),
-    reverse: bool = typer.Option(False, "-r", "--reverse", help="Oldest first."),
+    reverse: bool = typer.Option(False, "-r", "--reverse", help="Newest first."),
     urls: bool = typer.Option(False, "-u", "--urls", help="Show upstream URLs."),
 ) -> None:
-    """List releases, newest first. Defaults to the last 3 months, stable; widen
-    with --channel all and/or --since 0."""
+    """List releases oldest-first, so time flows down to the newest by the prompt
+    (-r for newest-first). Defaults to the last 3 months, stable; widen with
+    --channel all and/or --since 0."""
     since_eff = parse_since(since)
     channel_eff = None if channel == "all" else channel
     rows = _run(lambda b: b.releases(product=product, since=since_eff, until=None,
                                      channel=channel_eff))
-    if reverse:  # rows arrive newest-first; flip for oldest-first
+    if not reverse:  # default: oldest-first (time flows down); rows arrive newest-first
         rows = list(reversed(rows))
     for r in rows:
         when = r.get("date_display") or r.get("released_at") or "?"

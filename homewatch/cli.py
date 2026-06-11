@@ -285,13 +285,15 @@ def releases(
                                 autocompletion=_complete_product,
                                 help="Product id (see `homewatch products`)."),
     since: str = typer.Option(
-        None, help="Relative span (2y 2M 2w 2d 2h 2m 26000s) or ISO date; default all."),
+        "3M", help="How far back: relative span (3M, 2w, 1d, 2y …) or ISO date; "
+                   "0 or --all = all time."),
     channel: str = typer.Option("stable", help="Channel filter; ignored with --all."),
-    all_: bool = typer.Option(False, "--all", help="All channels (incl. beta/rc)."),
+    all_: bool = typer.Option(False, "--all", help="All channels + all time."),
     reverse: bool = typer.Option(False, "-r", "--reverse", help="Oldest first."),
     urls: bool = typer.Option(False, "-u", "--urls", help="Show upstream URLs."),
 ) -> None:
-    """List releases, newest first. Shows all stable by default; narrow with --since."""
+    """List releases, newest first. Defaults to the last 3 months, stable
+    (widen with --since 0 / 1y, or --all)."""
     if all_:
         since_eff, channel_eff = None, None
     else:

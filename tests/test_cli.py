@@ -126,16 +126,15 @@ def test_products_lists_vocabulary():
     assert "support.apple.com/en-us/108045" in r.output
 
 
-def test_releases_default_all_stable(httpx_mock):
+def test_releases_channel_and_window(httpx_mock):
     httpx_mock.add_response(url=HA_CORE_URL, content=(FIX / "ha_core.atom").read_bytes())
     runner.invoke(app, ["refresh", "--source", "ha_core_atom"])
-    # ha_core.atom has a stable (2026.4.3) and a beta (2026.5.0b1). Default shows
-    # all stable (no time window), excluding the beta.
-    out = runner.invoke(app, ["releases"]).output
+    # ha_core.atom has a stable (2026.4.3) and a beta (2026.5.0b1). Stable default
+    # excludes the beta; --all (all time + channels) surfaces it.
+    out = runner.invoke(app, ["releases", "--since", "0"]).output
     assert "2026.4.3" in out and "2026.5.0b1" not in out
-    # --all surfaces the beta too.
     assert "2026.5.0b1" in runner.invoke(app, ["releases", "--all"]).output
-    # --since narrows by relative span (both releases are old, so 1d → empty).
+    # --since narrows by relative span (fixture dates are old, so 1d → empty).
     assert "2026.4.3" not in runner.invoke(app, ["releases", "--since", "1d"]).output
 
 

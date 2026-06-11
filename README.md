@@ -127,11 +127,15 @@ Not on PyPI — install or run straight from GitHub:
 ```bash
 # one-off, no install (uv):
 uvx --from git+https://github.com/mcint/homewatch homewatch --help
+#   …with on-LAN probing for this run:
+uvx --with pyatv --from git+https://github.com/mcint/homewatch homewatch probe homepods
 
 # install as a CLI tool:
 uv tool install git+https://github.com/mcint/homewatch
-#   …with on-LAN device probing (pyatv):
-uv tool install "homewatch[probe] @ git+https://github.com/mcint/homewatch"
+#   …with the LAN-probe libs (pick one or both):
+uv tool install git+https://github.com/mcint/homewatch --with pyatv --with zeroconf
+#   (equivalently, via the declared extras:)
+uv tool install "homewatch[all] @ git+https://github.com/mcint/homewatch"
 
 # or pip:
 pip install git+https://github.com/mcint/homewatch
@@ -139,6 +143,6 @@ pip install "homewatch[all] @ git+https://github.com/mcint/homewatch"
 ```
 
 The default install is the lean **version tracker** (release feeds + CLI +
-daemon). Add `[probe]` (pyatv), `[zeroconf]`, or `[all]` for on-LAN device
-discovery — `homewatch probe` coaches you if the extra is missing. The package
-is PyPI-ready (metadata + extras) if/when you choose to publish.
+daemon). Add `pyatv` (`--with pyatv` or `[probe]`), `zeroconf`, or `[all]` for
+on-LAN device discovery — `homewatch probe` coaches you if the lib is missing.
+The package is PyPI-ready (metadata + extras) if/when you choose to publish.

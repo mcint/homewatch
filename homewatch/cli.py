@@ -21,7 +21,7 @@ import typer
 from . import __version__
 from .client import Backend, get_backend
 from .config import config_root, env_files, get_settings
-from .models import PRODUCT_LABELS, PRODUCT_PAGE, PRODUCTS
+from .models import DEVICE_KINDS, PRODUCT_LABELS, PRODUCT_PAGE, PRODUCTS
 
 _DURATION_RE = re.compile(r"^\s*(\d+)\s*([smhd]?)\s*$", re.IGNORECASE)
 _DURATION_UNIT = {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -54,8 +54,11 @@ til_app = typer.Typer(help="Append to the event log.", no_args_is_help=True,
                       context_settings=_CTX)
 probe_app = typer.Typer(help="Probe HA / HomePods on the LAN.", no_args_is_help=True,
                         context_settings=_CTX)
+devices_app = typer.Typer(help="Device inventory (list / show / retire / history).",
+                          no_args_is_help=True, context_settings=_CTX)
 app.add_typer(til_app, name="til", rich_help_panel=P_LOG)
 app.add_typer(probe_app, name="probe", rich_help_panel=P_DEPLOYED)
+app.add_typer(devices_app, name="devices", rich_help_panel=P_DEPLOYED)
 
 _state: dict[str, str | None] = {"remote": None}
 
@@ -130,6 +133,16 @@ def _product_arg():
     return typer.Argument(..., callback=_validate_product,
                           autocompletion=_complete_product,
                           help="Product id (see `homewatch products`).")
+
+
+def _validate_kind(value: str | None) -> str | None:
+    if value is None or value in DEVICE_KINDS:
+        return value
+    raise typer.BadParameter(f"unknown kind {value!r}. Valid: {', '.join(DEVICE_KINDS)}")
+
+
+def _complete_kind(incomplete: str):
+    return [k for k in DEVICE_KINDS if k.startswith(incomplete)]
 
 
 def _version_callback(value: bool) -> None:
@@ -434,6 +447,119 @@ def probe_history_cmd(
         ver = r.get("version") or f"FAIL: {r.get('error')}"
         typer.echo(f"{r['probed_at']:<20} {r['target_kind']:<15} "
                    f"{r['target_id']:<24} {ver}")
+
+
+# --- devices -------------------------------------------------------------------
+
+
+@devices_app.command("list")
+def devices_list_cmd(
+    kind: str = typer.Option(None, callback=_validate_kind,
+                             autocompletion=_complete_kind),
+    retired: bool = typer.Option(False, "--retired", help="Include retired."),
+) -> None:
+    """List enrolled devices with their detected version."""
+    rows = _run(lambda b: b.devices_list(kind=kind, include_retired=retired))
+    if not rows:
+        typer.echo("no devices yet — run `homewatch probe ha|homepods`")
+        return
+    for d in rows:
+        net = d.get("ssid") or d.get("ip") or ""
+        typer.echo(f"{d['device_id']:<26} {d['kind']:<14} "
+                   f"{d.get('name') or '':<18} {d.get('last_version') or '?':<10} "
+                   f"{d.get('status'):<8} {net}")
+
+
+@devices_app.command("show")
+def devices_show_cmd(device_id: str) -> None:
+    """Show one device's full record."""
+    d = _run(lambda b: b.device_get(device_id))
+    if d is None:
+        typer.secho(f"no device {device_id!r}", fg=typer.colors.YELLOW, err=True)
+        raise typer.Exit(1)
+    for k, v in d.items():
+        typer.echo(f"{k}: {v}")
+
+
+@devices_app.command("retire")
+def devices_retire_cmd(device_id: str) -> None:
+    """Mark a device retired (dead/gone)."""
+    ok = _run(lambda b: b.device_retire(device_id))
+    typer.echo(f"retired {device_id}" if ok else "not found / already retired")
+
+
+@devices_app.command("history")
+def devices_history_cmd(device_id: str, limit: int = typer.Option(20)) -> None:
+    """Show a device's recorded sightings (version + network over time)."""
+    rows = _run(lambda b: b.probe_history(target_kind=None, target_id=device_id,
+                                          limit=limit))
+    if not rows:
+        typer.echo("no sightings recorded")
+    for r in rows:
+        ver = r.get("version") or f"FAIL: {r.get('error')}"
+        net = r.get("ssid") or r.get("ip") or ""
+        typer.echo(f"{r['probed_at']:<22} {ver:<12} {net}")
+
+
+@app.command(rich_help_panel=P_DEPLOYED)
+def enroll(
+    device_id: str,
+    kind: str = typer.Argument(..., callback=_validate_kind,
+                               autocompletion=_complete_kind,
+                               help="homepod | home_assistant | esphome | custom"),
+    name: str = typer.Option(None, help="Friendly name."),
+    product: str = typer.Option(None, callback=_validate_product,
+                                autocompletion=_complete_product,
+                                help="Product id for 'behind?' checks."),
+) -> None:
+    """Register a device (probes also auto-enroll on first sighting)."""
+    d = _run(lambda b: b.device_enroll(device_id, kind, product=product, name=name))
+    typer.echo(f"enrolled {d['device_id']} ({d['kind']})")
+
+
+# --- synthesis -----------------------------------------------------------------
+
+
+async def _status_impl(b: Backend) -> list[tuple]:
+    devs = await b.devices_list(kind=None, include_retired=False)
+    out = []
+    for d in devs:
+        latest = None
+        if d.get("product"):
+            row = await b.latest(d["product"], "stable")
+            latest = row["version"] if row else None
+        out.append((d, latest))
+    return out
+
+
+@app.command(rich_help_panel=P_QUERY)
+def status() -> None:
+    """Per device: running version vs latest available — am I behind?"""
+    rows = _run(_status_impl)
+    if not rows:
+        typer.echo("no devices — probe some first (`homewatch probe ha|homepods`)")
+        return
+    for d, latest in rows:
+        running = d.get("last_version") or "?"
+        if latest and running not in ("?", latest):
+            verdict = typer.style(f"behind → {latest}", fg=typer.colors.YELLOW)
+        elif latest and running == latest:
+            verdict = typer.style("up to date", fg=typer.colors.GREEN)
+        else:
+            verdict = "(no release data)"
+        typer.echo(f"{d.get('name') or d['device_id']:<22} {d['kind']:<14} "
+                   f"running {running:<10} {verdict}")
+
+
+@app.command(rich_help_panel=P_FETCH)
+def fetch() -> None:
+    """Single-shot: refresh releases + probe HA & HomePods."""
+    res = _run(lambda b: _refresh_impl(b, None, True))
+    new = sum(c["new"] for c in res["refresh"].values())
+    typer.echo(f"releases: +{new} new across {len(res['refresh'])} sources")
+    ha = res.get("probe_ha", {})
+    typer.echo(f"ha: {ha.get('version') if ha.get('ok') else 'FAIL ' + str(ha.get('error'))}")
+    typer.echo(f"homepods: {len(res.get('probe_homepods', []))} seen")
 
 
 # --- meta ----------------------------------------------------------------------

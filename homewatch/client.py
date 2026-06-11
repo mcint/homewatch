@@ -14,6 +14,7 @@ is transport-agnostic.
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import asdict
 from typing import Protocol
 
 import httpx
@@ -44,6 +45,12 @@ class Backend(Protocol):
     async def probe_homepods(self) -> list[dict]: ...
     async def probe_history(self, *, target_kind: str | None,
                             target_id: str | None, limit: int) -> list[dict]: ...
+    async def devices_list(self, *, kind: str | None,
+                           include_retired: bool) -> list[dict]: ...
+    async def device_get(self, device_id: str) -> dict | None: ...
+    async def device_enroll(self, device_id: str, kind: str, *,
+                            product: str | None, name: str | None) -> dict: ...
+    async def device_retire(self, device_id: str) -> bool: ...
     async def sources(self) -> list[dict]: ...
 
 
@@ -150,6 +157,21 @@ class LocalBackend:
                               target_id=target_id, limit=limit)
         return [_row_dict(r) for r in rows]
 
+    async def devices_list(self, *, kind, include_retired) -> list[dict]:
+        return [asdict(d) for d in devices_mod.list_devices(
+            self.conn, kind=kind, include_retired=include_retired)]
+
+    async def device_get(self, device_id) -> dict | None:
+        d = devices_mod.get(self.conn, device_id)
+        return asdict(d) if d else None
+
+    async def device_enroll(self, device_id, kind, *, product, name) -> dict:
+        d, _ = devices_mod.enroll(self.conn, device_id, kind, product=product, name=name)
+        return asdict(d)
+
+    async def device_retire(self, device_id) -> bool:
+        return devices_mod.retire(self.conn, device_id)
+
     async def sources(self) -> list[dict]:
         out = []
         for src in sources.ALL_SOURCES:
@@ -249,6 +271,27 @@ class RemoteBackend:
                   {"target_kind": target_kind, "target_id": target_id,
                    "limit": limit}.items() if v is not None}
         return (await self._json("GET", "/probe/history", params=params))["probes"]
+
+    async def devices_list(self, *, kind, include_retired) -> list[dict]:
+        params = {"include_retired": str(include_retired).lower()}
+        if kind:
+            params["kind"] = kind
+        return (await self._json("GET", "/devices", params=params))["devices"]
+
+    async def device_get(self, device_id) -> dict | None:
+        r = await self.client.get("/devices/get", params={"device_id": device_id})
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
+
+    async def device_enroll(self, device_id, kind, *, product, name) -> dict:
+        return await self._json("POST", "/devices/enroll", json={
+            "device_id": device_id, "kind": kind, "product": product, "name": name})
+
+    async def device_retire(self, device_id) -> bool:
+        return (await self._json("POST", "/devices/retire",
+                                 params={"device_id": device_id}))["retired"]
 
     async def sources(self) -> list[dict]:
         return (await self._json("GET", "/releases/sources"))["sources"]

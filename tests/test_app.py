@@ -137,6 +137,18 @@ def test_timeline_json_and_html(client, httpx_mock):
     assert "homewatch timeline" in html
 
 
+def test_devices_endpoints(client):
+    client.post("/devices/enroll", json={"device_id": "d1", "kind": "esphome",
+                                         "name": "porch", "product": None})
+    lst = client.get("/devices").json()["devices"]
+    assert any(d["device_id"] == "d1" for d in lst)
+    assert client.get("/devices/get", params={"device_id": "d1"}).json()["name"] == "porch"
+    assert client.get("/devices/get", params={"device_id": "nope"}).status_code == 404
+    assert client.post("/devices/retire", params={"device_id": "d1"}).json()["retired"] is True
+    assert client.get("/devices").json()["devices"] == []
+    assert len(client.get("/devices", params={"include_retired": "true"}).json()["devices"]) == 1
+
+
 def test_auth_gates_routes_but_not_drop(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch, token="s3cret") as client:
         # No token → 401 on a gated route.

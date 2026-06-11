@@ -25,6 +25,9 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from dataclasses import asdict
+
+from . import devices as devices_mod
 from . import netinfo, notes
 from . import probes as probes_mod
 from . import sources, til, timeline
@@ -355,5 +358,41 @@ def get_timeline(
     return JSONResponse({"items": items})
 
 
-for r in (releases_router, probe_router, til_router, drop_router, timeline_router):
+# --- devices -------------------------------------------------------------------
+
+devices_router = APIRouter(prefix="/devices", tags=["devices"], dependencies=auth)
+
+
+@devices_router.get("")
+def list_devices_route(conn: Conn, kind: str | None = None,
+                       include_retired: bool = False) -> dict:
+    return {"devices": [asdict(d) for d in devices_mod.list_devices(
+        conn, kind=kind, include_retired=include_retired)]}
+
+
+@devices_router.post("/enroll")
+def enroll_device(conn: Conn, body: dict) -> dict:
+    dev, _ = devices_mod.enroll(
+        conn, body["device_id"], body["kind"],
+        product=body.get("product"), name=body.get("name"),
+    )
+    return asdict(dev)
+
+
+# device_id is a query param (it can contain '/' and ':' for HA URLs).
+@devices_router.get("/get")
+def get_device(conn: Conn, device_id: str) -> dict:
+    dev = devices_mod.get(conn, device_id)
+    if dev is None:
+        raise HTTPException(status_code=404, detail=f"no device {device_id}")
+    return asdict(dev)
+
+
+@devices_router.post("/retire")
+def retire_device(conn: Conn, device_id: str) -> dict:
+    return {"retired": devices_mod.retire(conn, device_id)}
+
+
+for r in (releases_router, probe_router, til_router, drop_router, timeline_router,
+          devices_router):
     app.include_router(r)

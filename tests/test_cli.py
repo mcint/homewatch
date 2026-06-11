@@ -75,6 +75,37 @@ def test_probe_homepods_raw_disabled_errors():
     assert "discovery is disabled" in r.output
 
 
+def test_enroll_list_status_retire():
+    r = runner.invoke(app, ["enroll", "esp-1", "esphome", "--name", "porch"])
+    assert r.exit_code == 0 and "enrolled esp-1" in r.output
+    lst = runner.invoke(app, ["devices", "list"]).output
+    assert "esp-1" in lst and "porch" in lst
+    # status lists it; no product → no release comparison.
+    assert "porch" in runner.invoke(app, ["status"]).output
+    # retire hides from the default list but keeps it under --retired.
+    assert "retired esp-1" in runner.invoke(app, ["devices", "retire", "esp-1"]).output
+    assert "esp-1" not in runner.invoke(app, ["devices", "list"]).output
+    assert "esp-1" in runner.invoke(app, ["devices", "list", "--retired"]).output
+
+
+def test_enroll_unknown_kind_rejected():
+    r = runner.invoke(app, ["enroll", "x", "toaster"])
+    assert r.exit_code != 0 and "unknown kind" in r.output
+
+
+def test_status_reports_behind(httpx_mock):
+    httpx_mock.add_response(url=HA_CORE_URL, content=(FIX / "ha_core.atom").read_bytes())
+    runner.invoke(app, ["refresh", "--source", "ha_core_atom"])  # latest stable 2026.4.3
+    from homewatch import devices
+    from homewatch.db import get_db
+    conn = get_db(get_settings().db)
+    devices.record_sighting(conn, device_id="ha", kind="home_assistant",
+                            version="2026.4.0", product="home_assistant_core", name="hass")
+    conn.close()
+    out = runner.invoke(app, ["status"]).output
+    assert "hass" in out and "behind" in out and "2026.4.3" in out
+
+
 def test_probe_history_empty_then_populated():
     assert "no probes recorded" in runner.invoke(app, ["probe", "history"]).output
     # Seed a probe row directly in the CLI's DB, then read it back.

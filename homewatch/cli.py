@@ -159,7 +159,7 @@ def _run(fn: Callable[[Backend], Awaitable]):
 
     try:
         return asyncio.run(go())
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, RuntimeError) as exc:
         typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1)
 
@@ -369,11 +369,44 @@ def probe_ha_cmd() -> None:
 
 
 @probe_app.command("homepods")
-def probe_homepods_cmd() -> None:
+def probe_homepods_cmd(
+    raw: bool = typer.Option(
+        False, "--raw", help="List ALL AirPlay devices seen (debug, no DB write)."),
+) -> None:
     """Discover HomePods on the LAN and record a row each."""
+    settings = get_settings()
+    if raw:  # local debug scan — runs where the mDNS is, no backend/DB
+        import asyncio
+
+        from . import probes
+        if settings.homepod_discovery == "disabled":
+            typer.secho("discovery is disabled — set "
+                        "HOMEWATCH_HOMEPOD_DISCOVERY=pyatv|zeroconf",
+                        fg=typer.colors.YELLOW, err=True)
+            raise typer.Exit(1)
+        try:
+            devices = asyncio.run(probes.discover_raw(settings.homepod_discovery))
+        except RuntimeError as exc:
+            typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1)
+        if not devices:
+            typer.echo("no AirPlay devices seen — same L2 segment? mDNS reachable?")
+        for d in devices:
+            mark = "HOMEPOD" if d.get("is_homepod") else "       "
+            typer.echo(f"{mark}  {d.get('model') or '?':<22} "
+                       f"{d.get('version') or '?':<10} "
+                       f"{d.get('name') or d.get('identifier')}")
+        return
+
     found = _run(lambda b: b.probe_homepods())
     if not found:
-        typer.echo("no homepods discovered (check HOMEWATCH_HOMEPOD_DISCOVERY)")
+        if settings.homepod_discovery == "disabled":
+            typer.echo("discovery disabled — set HOMEWATCH_HOMEPOD_DISCOVERY="
+                       "pyatv|zeroconf and `uv sync --extra probe`. "
+                       "Try `probe homepods --raw` to see the LAN.")
+        else:
+            typer.echo("no homepods discovered — try `probe homepods --raw` "
+                       "(same L2 segment as the HomePods?)")
     for hp in found:
         typer.echo(f"{hp['target_id']}: {hp.get('version')}")
 
@@ -428,6 +461,10 @@ def info() -> None:
     typer.echo(f"config dir:  {config_root()}")
     typer.echo(f"env files:   {', '.join(env_files())}")
     typer.echo(f"remote:      {_state['remote'] or s.url or '(local)'}")
+    import importlib.util as _u
+    extras = f"pyatv={_u.find_spec('pyatv') is not None} " \
+             f"zeroconf={_u.find_spec('zeroconf') is not None}"
+    typer.echo(f"homepod:     discovery={s.homepod_discovery}  {extras}")
 
 
 @app.command(rich_help_panel=P_DAEMON)

@@ -70,6 +70,15 @@ def test_apple_security_parse_fixture():
     assert ("homepod_software", "18.4") in products
     hp = next(r for r in releases if r.product == "homepod_software")
     assert hp.released_at == "2026-04-15"
+    # All URLs are absolute (relative hrefs resolved against the page).
+    assert all(r.url is None or r.url.startswith("https://") for r in releases)
+
+
+def test_apple_security_resolves_relative_hrefs():
+    html = ('<table><tr><td><a href="/en-us/127118">tvOS 26.5</a></td>'
+            '<td>Apple TV</td><td>11 May 2026</td></tr></table>')
+    rels = AppleSecuritySource().parse(html)
+    assert rels[0].url == "https://support.apple.com/en-us/127118"
 
 
 def test_homepod_notes_parse_fixture():

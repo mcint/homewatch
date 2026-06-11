@@ -51,6 +51,20 @@ async def test_probe_homepods_unknown_backend():
         await probe_homepods("carrier-pigeon")
 
 
+@pytest.mark.asyncio
+async def test_discover_raw_disabled():
+    from homewatch.probes.homepod import discover_raw
+    assert await discover_raw("disabled") == []
+
+
+def test_is_homepod_detection():
+    from homewatch.probes.homepod import _is_homepod
+    assert _is_homepod("AudioAccessory5,1", {})        # HomePod mini model
+    assert _is_homepod("HomePod", {})
+    assert _is_homepod(None, {"model": "AudioAccessory1,1"})
+    assert not _is_homepod("AppleTV6,2", {})
+
+
 def test_insert_and_history(db):
     from homewatch.models import Probe
 

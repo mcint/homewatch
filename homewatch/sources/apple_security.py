@@ -9,6 +9,7 @@ first place a new HomePod/iOS version shows up with a date.
 from __future__ import annotations
 
 import re
+from urllib.parse import urljoin
 
 import httpx
 from selectolax.parser import HTMLParser
@@ -87,7 +88,9 @@ class AppleSecuritySource:
                 continue  # header rows use <th>
             name = cells[0].text(strip=True)
             link_node = cells[0].css_first("a")
-            url = link_node.attributes.get("href") if link_node else None
+            href = link_node.attributes.get("href") if link_node else None
+            # Apple uses relative hrefs (/en-us/127118); make them absolute.
+            url = urljoin(self.url, href) if href else None
             date_text = cells[2].text(strip=True)
             released_at = parse_human_date(date_text)
             for product, version in parse_security_name(name):

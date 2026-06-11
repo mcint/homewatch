@@ -11,12 +11,13 @@ import httpx
 from ..db import utcnow
 from ..models import Probe
 from .ha import probe_ha
-from .homepod import probe_homepods
+from .homepod import discover_raw, probe_homepods
 
 if TYPE_CHECKING:
     from ..config import Settings
 
-__all__ = ["probe_ha", "probe_homepods", "insert_probe", "history", "autoprobe"]
+__all__ = ["probe_ha", "probe_homepods", "discover_raw", "insert_probe",
+           "history", "autoprobe"]
 
 
 def insert_probe(conn: sqlite3.Connection, probe: Probe) -> int:

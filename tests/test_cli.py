@@ -66,7 +66,13 @@ def test_sources_lists_streams():
 def test_probe_homepods_disabled_message():
     r = runner.invoke(app, ["probe", "homepods"])
     assert r.exit_code == 0
-    assert "no homepods" in r.output
+    assert "discovery disabled" in r.output
+
+
+def test_probe_homepods_raw_disabled_errors():
+    r = runner.invoke(app, ["probe", "homepods", "--raw"])
+    assert r.exit_code == 1
+    assert "discovery is disabled" in r.output
 
 
 def test_probe_history_empty_then_populated():

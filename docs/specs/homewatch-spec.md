@@ -425,14 +425,26 @@ view that actually answers "did HomePod 18.4 land 2 days before HA caught up?"
 `.env` / `pydantic-settings`:
 
 ```
-HOMEWATCH_DB=/var/lib/homewatch/homewatch.sqlite
+HOMEWATCH_HOME=/srv/homewatch        # optional data-project root (DB + .env)
+HOMEWATCH_DB=/var/lib/homewatch/homewatch.sqlite   # explicit DB path override
 HOMEWATCH_TOKEN=...                  # optional bearer for write routes
 HOMEWATCH_HA_URL=http://hass.local:8123
 HOMEWATCH_HA_TOKEN=eyJ...            # long-lived access token
 HOMEWATCH_HOMEPOD_DISCOVERY=pyatv    # 'pyatv' | 'zeroconf' | 'disabled'
+HOMEWATCH_URL=https://homewatch.example   # CLI drives this daemon (else local)
 HOMEWATCH_BIND=127.0.0.1:8765
-HOMEWATCH_USER_AGENT=homewatch/0.1 (+contact)
+HOMEWATCH_USER_AGENT=homewatch/0.3 (+contact)
 ```
+
+**Data location.** So the CLI behaves identically from any directory, the DB
+lives in a stable per-user place by default, not relative to the cwd:
+
+- `HOMEWATCH_HOME` set → that dir is the data-project root: DB at
+  `$HOMEWATCH_HOME/homewatch.sqlite`, `.env` at `$HOMEWATCH_HOME/.env`.
+- else → XDG: DB under `${XDG_DATA_HOME:-~/.local/share}/homewatch/`, and `.env`
+  read from the cwd and `${XDG_CONFIG_HOME:-~/.config}/homewatch/`.
+- `HOMEWATCH_DB` always wins for the DB path. `homewatch info` prints what's in
+  effect.
 
 User-Agent matters: Apple's support pages and GitHub will rate-limit anonymous
 crawlers. Set a real UA with a contact URL.

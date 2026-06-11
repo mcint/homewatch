@@ -94,6 +94,27 @@ def test_parse_duration():
     assert parse_duration("45") == 45
 
 
+def test_version_flag():
+    from homewatch import __version__
+    r = runner.invoke(app, ["--version"])
+    assert r.exit_code == 0 and __version__ in r.output
+    assert runner.invoke(app, ["-V"]).exit_code == 0
+
+
+def test_dash_h_works_top_and_sub():
+    assert runner.invoke(app, ["-h"]).exit_code == 0
+    sub = runner.invoke(app, ["til", "-h"])
+    assert sub.exit_code == 0 and "down" in sub.output
+
+
+def test_info_shows_db_path(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOMEWATCH_DB", str(tmp_path / "info.sqlite"))
+    get_settings.cache_clear()
+    r = runner.invoke(app, ["info"])
+    assert r.exit_code == 0
+    assert "info.sqlite" in r.output
+
+
 def test_watch_until_new_exits_when_release_lands(httpx_mock):
     # First (and only) cycle finds 2 new releases -> --until-new returns at once.
     httpx_mock.add_response(url=HA_CORE_URL, content=(FIX / "ha_core.atom").read_bytes())

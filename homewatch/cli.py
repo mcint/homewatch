@@ -16,8 +16,9 @@ from typing import Awaitable, Callable
 import httpx
 import typer
 
+from . import __version__
 from .client import Backend, get_backend
-from .config import get_settings
+from .config import config_root, env_files, get_settings
 
 _DURATION_RE = re.compile(r"^\s*(\d+)\s*([smhd]?)\s*$", re.IGNORECASE)
 _DURATION_UNIT = {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -30,22 +31,38 @@ def parse_duration(text: str) -> int:
         raise typer.BadParameter(f"bad duration {text!r}; use e.g. 30s, 5m, 1h, 7d")
     return int(m.group(1)) * _DURATION_UNIT[m.group(2).lower()]
 
+# Accept -h everywhere (top-level and subcommands inherit via context).
+_CTX = {"help_option_names": ["-h", "--help"]}
+
 app = typer.Typer(
     help="homewatch — HA × Apple/HomePod release correlator (local-first).",
     no_args_is_help=True,
+    context_settings=_CTX,
 )
-til_app = typer.Typer(help="Append to the event log.", no_args_is_help=True)
-probe_app = typer.Typer(help="Probe HA / HomePods on the LAN.", no_args_is_help=True)
+til_app = typer.Typer(help="Append to the event log.", no_args_is_help=True,
+                      context_settings=_CTX)
+probe_app = typer.Typer(help="Probe HA / HomePods on the LAN.", no_args_is_help=True,
+                        context_settings=_CTX)
 app.add_typer(til_app, name="til")
 app.add_typer(probe_app, name="probe")
 
 _state: dict[str, str | None] = {"remote": None}
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"homewatch {__version__}")
+        raise typer.Exit()
+
+
 @app.callback()
 def _main(
     remote: str = typer.Option(
         None, "--remote", help="Drive a daemon at URL instead of the local DB."
+    ),
+    version: bool = typer.Option(
+        None, "-V", "--version", callback=_version_callback, is_eager=True,
+        help="Show version and exit.",
     ),
 ) -> None:
     _state["remote"] = remote
@@ -270,6 +287,18 @@ def sources() -> None:
     for s in _run(lambda b: b.sources()):
         typer.echo(f"{s['name']:<20} {s.get('last_status') or '-':<10} "
                    f"{s.get('last_fetched_at') or 'never':<22} {s.get('url') or ''}")
+
+
+@app.command()
+def info() -> None:
+    """Show effective paths and config (debug 'which DB am I using?')."""
+    s = get_settings()
+    typer.echo(f"homewatch {__version__}")
+    typer.echo(f"db:          {s.db}  ({'exists' if s.db.exists() else 'new'})")
+    typer.echo(f"home:        {s.home or '(unset — XDG default)'}")
+    typer.echo(f"config dir:  {config_root()}")
+    typer.echo(f"env files:   {', '.join(env_files())}")
+    typer.echo(f"remote:      {_state['remote'] or s.url or '(local)'}")
 
 
 @app.command()

@@ -3,7 +3,7 @@
 Orientation surface. One screen: where the project is, what works, what's open.
 Details live in [`specs/`](specs/), [`refs/`](refs/), [`sessions/`](sessions/).
 
-**Version:** 0.2.x (toward `v0.3.0`).  **Shape:** local-first CLI; daemon
+**Version:** 0.3.0.  **Shape:** local-first CLI; daemon
 secondary. One SQLite DB, seven release sources, on-demand notes.
 
 ## The model (deeper simplicity)
@@ -45,4 +45,4 @@ release (available upstream)  ⋈  deployed (running on device)  →  timeline (
 ## Releases
 
 `v0.1.0` daemon-first v1 · `v0.2.x` CLI-first + endoflife + grammar ·
-`v0.3.0` (pending) the CLI-first feature milestone.
+`v0.3.0` the CLI-first feature milestone (endoflife, XDG, grammar).

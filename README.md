@@ -12,32 +12,57 @@ timeline against your own append-only log of "noticed it down at 19:42".
 See [`docs/specs/homewatch-spec.md`](docs/specs/homewatch-spec.md) for the
 full design.
 
-## Quick start
+## Quick start (local-first — no server needed)
 
 ```bash
 uv sync                      # create venv, install deps
 cp .env.example .env         # fill in HA url/token, optional bearer
-uv run homewatch serve       # http://127.0.0.1:8765
+uv run homewatch refresh     # pull all release streams into the local DB
+uv run homewatch timeline    # see releases × probes × TIL, interleaved
 ```
 
-Pull releases and look at the timeline:
+The CLI talks straight to the local SQLite file and the upstream feeds. Log an
+observation, pull a single source, read full notes on demand:
 
 ```bash
-curl -X POST localhost:8765/releases/refresh
-curl 'localhost:8765/timeline?since=2026-01-01'
+homewatch til down homepod-kitchen "siri unresponsive"
+homewatch til up   homepod-kitchen
+homewatch latest homepod_software
+homewatch show    home_assistant_core          # full release notes, fetched live
+homewatch sources                              # streams + freshness
 ```
 
-Log an observation from any device on the network (no body needed):
+### Cadence
+
+`homewatch refresh` is a single-shot updater — schedule it however you like:
+
+```cron
+0 * * * *  homewatch refresh            # hourly via cron/launchd/systemd
+```
+
+Or run the foreground "watchman" loop until an update lands:
+
+```bash
+homewatch watch --interval 1h --until-new --product homepod_software
+homewatch watch --interval 30m --for 7d --probe          # poll a window
+```
+
+### Daemon (secondary — access from other devices)
+
+Run a server so phones/other hosts can hit the URL drop-in and timeline:
+
+```bash
+uv run homewatch serve       # http://127.0.0.1:8765
+```
 
 ```
 http://homewatch.local:8765/til/drop/down/homepod-kitchen?text=siri+timer+dead
 ```
 
-…or from the shell:
+Point the CLI at a remote daemon with `--remote URL` (or `HOMEWATCH_URL`):
 
 ```bash
-homewatch til down homepod-kitchen "siri unresponsive"
-homewatch til up   homepod-kitchen
+homewatch --remote https://homewatch.example til down ha "core upgrade broke matter"
 ```
 
 ## Surfaces

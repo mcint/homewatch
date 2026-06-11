@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+import time
 from typing import Awaitable, Callable
 
 import httpx
@@ -16,6 +18,17 @@ import typer
 
 from .client import Backend, get_backend
 from .config import get_settings
+
+_DURATION_RE = re.compile(r"^\s*(\d+)\s*([smhd]?)\s*$", re.IGNORECASE)
+_DURATION_UNIT = {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def parse_duration(text: str) -> int:
+    """Parse '30s' / '5m' / '1h' / '7d' (or bare seconds) to seconds; '0' = off."""
+    m = _DURATION_RE.match(text or "")
+    if not m:
+        raise typer.BadParameter(f"bad duration {text!r}; use e.g. 30s, 5m, 1h, 7d")
+    return int(m.group(1)) * _DURATION_UNIT[m.group(2).lower()]
 
 app = typer.Typer(
     help="homewatch — HA × Apple/HomePod release correlator (local-first).",
@@ -112,6 +125,59 @@ def refresh(
         ha = res["probe_ha"]
         typer.echo(f"probe ha: {'ok ' + str(ha.get('version')) if ha.get('ok') else 'FAIL ' + str(ha.get('error'))}")
         typer.echo(f"probe homepods: {len(res['probe_homepods'])} found")
+
+
+async def _watch_impl(b, *, interval_s, total_s, until_new, product, source, probe):
+    start = time.monotonic()
+    baseline = None
+    if until_new and product:
+        row = await b.latest(product, "stable")
+        baseline = row["version"] if row else None
+    n = 0
+    while True:
+        n += 1
+        res = await _refresh_impl(b, source, probe)
+        new_total = sum(c["new"] for c in res["refresh"].values())
+        typer.echo(f"[{n}] +{new_total} new"
+                   + (f", probed ha={res['probe_ha'].get('version')}" if probe else ""))
+        if until_new:
+            if product:
+                row = await b.latest(product, "stable")
+                cur = row["version"] if row else None
+                if cur and cur != baseline:
+                    typer.secho(f"new {product} release: {cur}", fg=typer.colors.GREEN)
+                    return
+            elif new_total > 0:
+                typer.secho(f"new release(s): {new_total}", fg=typer.colors.GREEN)
+                return
+        if total_s and (time.monotonic() - start) >= total_s:
+            typer.echo("watch window elapsed")
+            return
+        await asyncio.sleep(interval_s)
+
+
+@app.command()
+def watch(
+    interval: str = typer.Option("1h", help="Poll cadence, e.g. 30s 5m 1h 1d."),
+    duration: str = typer.Option("0", "--for", help="Window, e.g. 7d; 0 = forever."),
+    until_new: bool = typer.Option(False, "--until-new", help="Stop on a new release."),
+    product: str = typer.Option(None, help="With --until-new: watch this product."),
+    source: str = typer.Option(None, help="Limit refresh to one source."),
+    probe: bool = typer.Option(False, help="Also probe each cycle."),
+) -> None:
+    """Repeat the single-shot refresh on an interval for a bounded window.
+
+    The cron-friendly default is `homewatch refresh`; this is the foreground
+    'watchman' loop for temporary active polling until an update lands.
+    """
+    interval_s = parse_duration(interval)
+    total_s = parse_duration(duration)
+    try:
+        _run(lambda b: _watch_impl(b, interval_s=interval_s, total_s=total_s,
+                                   until_new=until_new, product=product,
+                                   source=source, probe=probe))
+    except KeyboardInterrupt:
+        typer.echo("\nstopped")
 
 
 @app.command()

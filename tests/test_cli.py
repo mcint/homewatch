@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from homewatch.cli import app
+from homewatch.cli import app, parse_duration
 from homewatch.config import get_settings
 from homewatch.sources.ha_release import URL as HA_CORE_URL
 
@@ -83,3 +83,21 @@ def test_remote_mode_uses_daemon(httpx_mock):
 def test_latest_missing_exits_1():
     r = runner.invoke(app, ["latest", "home_assistant_core"])
     assert r.exit_code == 1
+
+
+def test_parse_duration():
+    assert parse_duration("30s") == 30
+    assert parse_duration("5m") == 300
+    assert parse_duration("1h") == 3600
+    assert parse_duration("7d") == 604800
+    assert parse_duration("0") == 0
+    assert parse_duration("45") == 45
+
+
+def test_watch_until_new_exits_when_release_lands(httpx_mock):
+    # First (and only) cycle finds 2 new releases -> --until-new returns at once.
+    httpx_mock.add_response(url=HA_CORE_URL, content=(FIX / "ha_core.atom").read_bytes())
+    r = runner.invoke(app, ["watch", "--source", "ha_core_atom", "--until-new",
+                            "--interval", "1h"])
+    assert r.exit_code == 0, r.output
+    assert "new release(s): 2" in r.output

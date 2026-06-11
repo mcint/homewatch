@@ -49,6 +49,23 @@ def date_display(conn: sqlite3.Connection, row) -> str:
     return t
 
 
+def date_source(conn: sqlite3.Connection, row) -> str | None:
+    """URL backing a release's effective date: its own page, or the tvOS page a
+    HomePod date is derived from (so HomePod can report the tvOS link)."""
+    _, prec = derive_date(conn, row)
+    if prec == "exact":
+        return row["url"]
+    if prec == "tvos":
+        tv = conn.execute(
+            "SELECT url FROM releases WHERE product='tvos' AND released_at IS NOT NULL"
+            "   AND (version=? OR version=? || '.0')"
+            " ORDER BY channel='stable' DESC LIMIT 1",
+            (row["version"], row["version"]),
+        ).fetchone()
+        return (tv["url"] if tv and tv["url"] else "https://endoflife.date/tvos")
+    return None
+
+
 def build(
     conn: sqlite3.Connection,
     *,
@@ -65,7 +82,8 @@ def build(
     """
     items: list[dict] = []
 
-    # Releases. Fall back to discovered_at for ordering when released_at is NULL.
+    # Releases. Windowing is applied at the end on the *derived* time so HomePod
+    # (dated via tvOS) lands in the right place — consistent with every output.
     rel_where = []
     rel_params: list[object] = []
     if not include_betas:
@@ -74,12 +92,6 @@ def build(
         placeholders = ",".join("?" * len(products))
         rel_where.append(f"product IN ({placeholders})")
         rel_params.extend(products)
-    if since:
-        rel_where.append("COALESCE(released_at, discovered_at) >= ?")
-        rel_params.append(since)
-    if until:
-        rel_where.append("COALESCE(released_at, discovered_at) <= ?")
-        rel_params.append(until)
     rel_clause = (" WHERE " + " AND ".join(rel_where)) if rel_where else ""
     for r in conn.execute("SELECT * FROM releases" + rel_clause, rel_params):
         t, precision = derive_date(conn, r)
@@ -97,7 +109,7 @@ def build(
         )
 
     # TIL events (excludes soft-deleted via til.query).
-    for e in til.query(conn, since=since, until=until, limit=10_000):
+    for e in til.query(conn, limit=10_000):
         items.append(
             {
                 "t": e.occurred_at,
@@ -111,16 +123,7 @@ def build(
 
     # Probes.
     if include_probes:
-        pr_where = []
-        pr_params: list[object] = []
-        if since:
-            pr_where.append("probed_at >= ?")
-            pr_params.append(since)
-        if until:
-            pr_where.append("probed_at <= ?")
-            pr_params.append(until)
-        pr_clause = (" WHERE " + " AND ".join(pr_where)) if pr_where else ""
-        for p in conn.execute("SELECT * FROM probes" + pr_clause, pr_params):
+        for p in conn.execute("SELECT * FROM probes"):
             items.append(
                 {
                     "t": p["probed_at"],
@@ -132,6 +135,12 @@ def build(
                 }
             )
 
+    # Uniform windowing on the (possibly derived) time, so every output flows
+    # down through time consistently.
+    if since:
+        items = [it for it in items if it["t"] and it["t"] >= since]
+    if until:
+        items = [it for it in items if it["t"] and it["t"] <= until]
     items.sort(key=lambda it: (it["t"] or "", it["kind"]))
     return items
 

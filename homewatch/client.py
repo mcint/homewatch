@@ -93,7 +93,12 @@ class LocalBackend:
     async def releases(self, *, product, since, until, channel) -> list[dict]:
         rows = base.list_releases(self.conn, product=product, since=since,
                                   until=until, channel=channel)
-        return [_row_dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = _row_dict(r)
+            d["date_display"] = timeline.date_display(self.conn, r)
+            out.append(d)
+        return out
 
     async def latest(self, product, channel) -> dict | None:
         row = base.latest_release(self.conn, product, channel)
@@ -101,6 +106,7 @@ class LocalBackend:
             return None
         out = _row_dict(row)
         out["date_display"] = timeline.date_display(self.conn, row)
+        out["date_source_url"] = timeline.date_source(self.conn, row)
         return out
 
     async def show(self, product, version, channel) -> dict | None:
@@ -116,6 +122,7 @@ class LocalBackend:
         full = await notes.fetch_full_notes(self.client, row)
         out = _row_dict(row)
         out["date_display"] = timeline.date_display(self.conn, row)
+        out["date_source_url"] = timeline.date_source(self.conn, row)
         out["notes_full"] = full
         return out
 

@@ -85,6 +85,36 @@ def test_undated_release_is_bounded(db):
     assert timeline.date_display(db, row).startswith("≤")
 
 
+def test_latest_homepod_uses_tvos_effective_date(db):
+    from homewatch.sources.base import latest_release, list_releases
+    # tvOS dates for two majors.
+    upsert_release(db, Release(product="tvos", version="13.4", source="endoflife",
+                              channel="stable", released_at="2020-03-24"))
+    upsert_release(db, Release(product="tvos", version="18.4", source="endoflife",
+                              channel="stable", released_at="2026-04-15"))
+    # HomePod versions inserted oldest-LAST (id artifact): without effective-date
+    # ordering, latest would wrongly pick 13.4 (highest id).
+    upsert_release(db, Release(product="homepod_software", version="18.4",
+                              source="homepod_notes", channel="stable"))
+    upsert_release(db, Release(product="homepod_software", version="13.4",
+                              source="homepod_notes", channel="stable"))
+    assert latest_release(db, "homepod_software")["version"] == "18.4"
+    # And the list flows newest-first by effective (tvOS) date.
+    versions = [r["version"] for r in list_releases(db, product="homepod_software")]
+    assert versions == ["18.4", "13.4"]
+
+
+def test_date_source_reports_tvos_link(db):
+    upsert_release(db, Release(product="tvos", version="18.4", source="endoflife",
+                              channel="stable", released_at="2026-04-15",
+                              url="https://endoflife.date/tvos"))
+    upsert_release(db, Release(product="homepod_software", version="18.4",
+                              source="homepod_notes", channel="stable",
+                              url="https://support.apple.com/en-us/108045"))
+    hp = db.execute("SELECT * FROM releases WHERE product='homepod_software'").fetchone()
+    assert timeline.date_source(db, hp) == "https://endoflife.date/tvos"
+
+
 def test_exact_date_passes_through(db):
     upsert_release(db, Release(product="tvos", version="18.4", source="endoflife",
                               channel="stable", released_at="2026-04-15"))

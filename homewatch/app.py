@@ -120,7 +120,12 @@ def list_releases(
     rows = base.list_releases(
         conn, product=product, since=since, until=until, channel=channel
     )
-    return {"releases": [_release_dict(r) for r in rows]}
+    out = []
+    for r in rows:
+        d = _release_dict(r)
+        d["date_display"] = timeline.date_display(conn, r)
+        out.append(d)
+    return {"releases": out}
 
 
 @releases_router.get("/latest")
@@ -130,6 +135,7 @@ def latest_release(conn: Conn, product: str, channel: str = "stable") -> dict:
         raise HTTPException(status_code=404, detail=f"no releases for {product}")
     out = _release_dict(row)
     out["date_display"] = timeline.date_display(conn, row)
+    out["date_source_url"] = timeline.date_source(conn, row)
     return out
 
 
@@ -152,6 +158,7 @@ async def show_release(
         raise HTTPException(status_code=404, detail=f"no release for {product}")
     out = _release_dict(row)
     out["date_display"] = timeline.date_display(conn, row)
+    out["date_source_url"] = timeline.date_source(conn, row)
     out["notes_full"] = await notes.fetch_full_notes(client, row)
     return out
 

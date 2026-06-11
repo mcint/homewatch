@@ -301,7 +301,8 @@ def releases(
     if reverse:  # rows arrive newest-first; flip for oldest-first
         rows = list(reversed(rows))
     for r in rows:
-        line = (f"{r.get('released_at') or '?':<20} {r['product']:<20} "
+        when = r.get("date_display") or r.get("released_at") or "?"
+        line = (f"{when:<22} {r['product']:<20} "
                 f"{r['version']:<12} {r.get('channel') or ''}")
         if urls and r.get("url"):
             line += f"  {r['url']}"
@@ -320,6 +321,9 @@ def latest(product: str = _product_arg(),
                f"{row.get('date_display') or row.get('released_at') or ''}")
     if row.get("url"):
         typer.echo(row["url"])
+    src = row.get("date_source_url")
+    if src and src != row.get("url"):  # e.g. HomePod date tracks tvOS
+        typer.echo(f"date via tvOS: {src}")
 
 
 @app.command(rich_help_panel=P_QUERY)
@@ -335,6 +339,9 @@ def show(product: str = _product_arg(), version: str = typer.Argument(None),
                 f"{row.get('date_display') or ''}", bold=True)
     if row.get("url"):
         typer.echo(row["url"])
+    src = row.get("date_source_url")
+    if src and src != row.get("url"):
+        typer.echo(f"date via tvOS: {src}")
     typer.echo("")
     typer.echo(row.get("notes_full") or row.get("notes") or "(no notes)")
 

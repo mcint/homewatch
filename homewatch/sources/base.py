@@ -232,6 +232,22 @@ def upsert_release(conn: sqlite3.Connection, r: Release) -> bool:
     return True
 
 
+# Effective date for ordering: a real released_at, else (for HomePod, dateless
+# upstream) the same-version tvOS date. NULL when neither — undated rows then
+# sort *last* (DESC puts NULLs last), instead of jumping to "now" via
+# discovered_at. Fixes HomePod ordering / `latest` falling back to insertion-id.
+# (The ≤discovered_at "bound" is a display-only marker; see timeline.derive_date.)
+EFFECTIVE_DATE = (
+    "COALESCE(releases.released_at,"
+    " CASE WHEN releases.product='homepod_software' THEN"
+    "  (SELECT tv.released_at FROM releases tv"
+    "   WHERE tv.product='tvos' AND tv.released_at IS NOT NULL"
+    "     AND (tv.version=releases.version OR tv.version=releases.version || '.0')"
+    "   ORDER BY (tv.channel='stable') DESC LIMIT 1)"
+    " END)"
+)
+
+
 def list_releases(
     conn: sqlite3.Connection,
     *,
@@ -241,26 +257,26 @@ def list_releases(
     channel: str | None = None,
     limit: int = 500,
 ) -> list[sqlite3.Row]:
-    """Filtered release list, newest first. All filters optional (spec §5.1)."""
+    """Filtered release list, newest first by effective date. Filters optional."""
     where: list[str] = []
     params: list[object] = []
     if product:
-        where.append("product = ?")
+        where.append("releases.product = ?")
         params.append(product)
     if since:
-        where.append("released_at >= ?")
+        where.append(f"{EFFECTIVE_DATE} >= ?")
         params.append(since)
     if until:
-        where.append("released_at <= ?")
+        where.append(f"{EFFECTIVE_DATE} <= ?")
         params.append(until)
     if channel:
-        where.append("channel = ?")
+        where.append("releases.channel = ?")
         params.append(channel)
     clause = (" WHERE " + " AND ".join(where)) if where else ""
     params.append(limit)
     return conn.execute(
-        "SELECT * FROM releases" + clause
-        + " ORDER BY released_at DESC, id DESC LIMIT ?",
+        f"SELECT * FROM releases{clause}"
+        f" ORDER BY {EFFECTIVE_DATE} DESC, releases.id DESC LIMIT ?",
         params,
     ).fetchall()
 
@@ -268,9 +284,9 @@ def list_releases(
 def latest_release(
     conn: sqlite3.Connection, product: str, channel: str = "stable"
 ) -> sqlite3.Row | None:
-    """Single most-recent release for a product on a channel (spec §5.1)."""
+    """Single most-recent release for a product on a channel, by effective date."""
     return conn.execute(
-        "SELECT * FROM releases WHERE product=? AND channel=?"
-        " ORDER BY released_at DESC, id DESC LIMIT 1",
+        f"SELECT * FROM releases WHERE releases.product=? AND releases.channel=?"
+        f" ORDER BY {EFFECTIVE_DATE} DESC, releases.id DESC LIMIT 1",
         (product, channel),
     ).fetchone()

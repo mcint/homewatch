@@ -95,7 +95,11 @@ class LocalBackend:
 
     async def latest(self, product, channel) -> dict | None:
         row = base.latest_release(self.conn, product, channel)
-        return _row_dict(row) if row else None
+        if row is None:
+            return None
+        out = _row_dict(row)
+        out["date_display"] = timeline.date_display(self.conn, row)
+        return out
 
     async def show(self, product, version, channel) -> dict | None:
         if version:
@@ -109,6 +113,7 @@ class LocalBackend:
             return None
         full = await notes.fetch_full_notes(self.client, row)
         out = _row_dict(row)
+        out["date_display"] = timeline.date_display(self.conn, row)
         out["notes_full"] = full
         return out
 

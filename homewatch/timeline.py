@@ -13,6 +13,42 @@ import sqlite3
 from . import til
 
 
+def derive_date(conn: sqlite3.Connection, row) -> tuple[str | None, str]:
+    """Best date for a release row + its precision (spec §12.3).
+
+    Returns ``(iso, precision)`` where precision is:
+    - ``exact``  — a real released_at,
+    - ``tvos``   — HomePod with no date, inheriting the same-version tvOS date,
+    - ``bound``  — still undated; ``discovered_at`` as an upper bound.
+    """
+    if row["released_at"]:
+        return row["released_at"], "exact"
+    if row["product"] == "homepod_software":
+        # HomePod tracks tvOS versions; match exactly, or a bare major like
+        # "26" against tvOS's "26.0".
+        tv = conn.execute(
+            "SELECT released_at FROM releases"
+            " WHERE product='tvos' AND released_at IS NOT NULL"
+            "   AND version IN (?, ? || '.0')"
+            " ORDER BY channel='stable' DESC LIMIT 1",
+            (row["version"], row["version"]),
+        ).fetchone()
+        if tv and tv["released_at"]:
+            return tv["released_at"], "tvos"
+    return row["discovered_at"], "bound"
+
+
+def date_display(conn: sqlite3.Connection, row) -> str:
+    """Human date string with precision marker (≈ tracks tvOS / ≤ bound)."""
+    t, prec = derive_date(conn, row)
+    t = t or "?"
+    if prec == "tvos":
+        return f"≈{t} (tracks tvOS)"
+    if prec == "bound":
+        return f"≤{t}"
+    return t
+
+
 def build(
     conn: sqlite3.Connection,
     *,
@@ -46,15 +82,17 @@ def build(
         rel_params.append(until)
     rel_clause = (" WHERE " + " AND ".join(rel_where)) if rel_where else ""
     for r in conn.execute("SELECT * FROM releases" + rel_clause, rel_params):
+        t, precision = derive_date(conn, r)
         items.append(
             {
-                "t": r["released_at"] or r["discovered_at"],
+                "t": t,
                 "kind": "release",
                 "product": r["product"],
                 "version": r["version"],
                 "channel": r["channel"],
                 "title": r["title"],
                 "url": r["url"],
+                "date_precision": precision,
             }
         )
 
@@ -117,11 +155,25 @@ def _label(item: dict) -> str:
     return item["kind"]
 
 
+def _fmt_time(item: dict) -> str:
+    """Time string with a precision marker for derived/bounded release dates."""
+    t = item["t"] or "?"
+    prec = item.get("date_precision")
+    if prec == "tvos":
+        return f"≈{t} (tracks tvOS)"
+    if prec == "bound":
+        return f"≤{t}"
+    return t
+
+
 def render_md(items: list[dict]) -> str:
     """Markdown blob suitable to paste into a wiki post (spec §5.4)."""
     lines = ["# homewatch timeline", ""]
     for it in items:
-        lines.append(f"- **{it['t']}** — {_label(it)}")
+        label = _label(it)
+        if it.get("url"):  # link releases for click-through inspection (§12.2)
+            label = f"[{label}]({it['url']})"
+        lines.append(f"- **{_fmt_time(it)}** — {label}")
     return "\n".join(lines) + "\n"
 
 
@@ -130,9 +182,12 @@ def render_html(items: list[dict]) -> str:
     rows = []
     for it in items:
         cls = it["kind"]
+        label = html.escape(_label(it))
+        if it.get("url"):
+            label = f'<a href="{html.escape(it["url"])}">{label}</a>'
         rows.append(
-            f'<li class="ev {cls}"><time>{html.escape(it["t"] or "")}</time>'
-            f'<span class="what">{html.escape(_label(it))}</span></li>'
+            f'<li class="ev {cls}"><time>{html.escape(_fmt_time(it))}</time>'
+            f'<span class="what">{label}</span></li>'
         )
     body = "\n".join(rows) or "<li>(no events in range)</li>"
     return (

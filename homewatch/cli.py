@@ -199,16 +199,20 @@ def watch(
 
 @app.command()
 def releases(
-    product: str = typer.Option(None),
+    product: str = typer.Option(None, help="Product id (see `homewatch products`)."),
     since: str = typer.Option(None),
     channel: str = typer.Option(None, help="stable | beta | rc"),
+    urls: bool = typer.Option(False, "-u", "--urls", help="Show upstream URLs."),
 ) -> None:
     """List releases (newest first)."""
     rows = _run(lambda b: b.releases(product=product, since=since, until=None,
                                      channel=channel))
     for r in rows:
-        typer.echo(f"{r.get('released_at') or '?':<20} {r['product']:<20} "
-                   f"{r['version']:<12} {r.get('channel') or ''}")
+        line = (f"{r.get('released_at') or '?':<20} {r['product']:<20} "
+                f"{r['version']:<12} {r.get('channel') or ''}")
+        if urls and r.get("url"):
+            line += f"  {r['url']}"
+        typer.echo(line)
 
 
 @app.command()
@@ -219,7 +223,7 @@ def latest(product: str, channel: str = typer.Option("stable")) -> None:
         typer.secho(f"no releases for {product}", fg=typer.colors.YELLOW, err=True)
         raise typer.Exit(1)
     typer.echo(f"{row['product']} {row['version']} ({row.get('channel')}) "
-               f"{row.get('released_at') or ''}")
+               f"{row.get('date_display') or row.get('released_at') or ''}")
     if row.get("url"):
         typer.echo(row["url"])
 
@@ -233,8 +237,8 @@ def show(product: str, version: str = typer.Argument(None),
         typer.secho(f"no release for {product} {version or ''}",
                     fg=typer.colors.YELLOW, err=True)
         raise typer.Exit(1)
-    typer.secho(f"{row['product']} {row['version']} ({row.get('channel')})",
-                bold=True)
+    typer.secho(f"{row['product']} {row['version']} ({row.get('channel')}) "
+                f"{row.get('date_display') or ''}", bold=True)
     if row.get("url"):
         typer.echo(row["url"])
     typer.echo("")

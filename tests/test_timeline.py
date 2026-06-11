@@ -65,6 +65,41 @@ def test_since_until_window(db):
     assert all(it["t"] >= "2026-04-16T00:00:00Z" for it in items)
 
 
+def test_homepod_inherits_tvos_date(db):
+    # tvOS 18.4 dated; HomePod 18.4 undated -> derive ≈ tvOS date.
+    upsert_release(db, Release(product="tvos", version="18.4", source="endoflife",
+                              channel="stable", released_at="2026-04-15"))
+    upsert_release(db, Release(product="homepod_software", version="18.4",
+                              source="homepod_notes", channel="stable"))
+    hp = db.execute("SELECT * FROM releases WHERE product='homepod_software'").fetchone()
+    assert timeline.derive_date(db, hp) == ("2026-04-15", "tvos")
+    assert "tracks tvOS" in timeline.date_display(db, hp)
+
+
+def test_undated_release_is_bounded(db):
+    upsert_release(db, Release(product="homepod_software", version="14.0",
+                              source="homepod_notes", channel="stable"))
+    row = db.execute("SELECT * FROM releases").fetchone()
+    iso, prec = timeline.derive_date(db, row)
+    assert prec == "bound"
+    assert timeline.date_display(db, row).startswith("≤")
+
+
+def test_exact_date_passes_through(db):
+    upsert_release(db, Release(product="tvos", version="18.4", source="endoflife",
+                              channel="stable", released_at="2026-04-15"))
+    row = db.execute("SELECT * FROM releases").fetchone()
+    assert timeline.derive_date(db, row) == ("2026-04-15", "exact")
+
+
+def test_md_links_release_urls(db):
+    upsert_release(db, Release(product="tvos", version="18.4", source="x",
+                              channel="stable", released_at="2026-04-15",
+                              url="https://endoflife.date/tvos"))
+    md = timeline.render_md(timeline.build(db))
+    assert "[release · tvos 18.4](https://endoflife.date/tvos)" in md
+
+
 def test_json_and_md_and_html_render(db):
     _seed(db)
     items = timeline.build(db)

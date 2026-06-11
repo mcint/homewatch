@@ -128,7 +128,9 @@ def latest_release(conn: Conn, product: str, channel: str = "stable") -> dict:
     row = base.latest_release(conn, product, channel)
     if row is None:
         raise HTTPException(status_code=404, detail=f"no releases for {product}")
-    return _release_dict(row)
+    out = _release_dict(row)
+    out["date_display"] = timeline.date_display(conn, row)
+    return out
 
 
 @releases_router.get("/show")
@@ -149,6 +151,7 @@ async def show_release(
     if row is None:
         raise HTTPException(status_code=404, detail=f"no release for {product}")
     out = _release_dict(row)
+    out["date_display"] = timeline.date_display(conn, row)
     out["notes_full"] = await notes.fetch_full_notes(client, row)
     return out
 

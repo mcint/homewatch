@@ -89,6 +89,13 @@ uv sync --extra zeroconf
 On a VPS, run the release/TIL halves remotely and a thin probe agent on the
 LAN that posts results up (see spec §7).
 
+## Docs
+
+- [`docs/specs/`](docs/specs/) — design intent (the spec).
+- [`docs/refs/`](docs/refs/) — durable reference: [product vocabulary, update
+  streams, tvOS↔HomePod, date precision](docs/refs/products-and-streams.md).
+- [`docs/sessions/`](docs/sessions/) — per-session status / reports / open items.
+
 ## Development
 
 ```bash

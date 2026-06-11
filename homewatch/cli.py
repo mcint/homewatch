@@ -11,6 +11,7 @@ import asyncio
 import json
 import re
 import time
+from datetime import date, timedelta
 from typing import Awaitable, Callable
 
 import httpx
@@ -19,6 +20,7 @@ import typer
 from . import __version__
 from .client import Backend, get_backend
 from .config import config_root, env_files, get_settings
+from .models import PRODUCT_LABELS, PRODUCTS
 
 _DURATION_RE = re.compile(r"^\s*(\d+)\s*([smhd]?)\s*$", re.IGNORECASE)
 _DURATION_UNIT = {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -47,6 +49,35 @@ app.add_typer(til_app, name="til")
 app.add_typer(probe_app, name="probe")
 
 _state: dict[str, str | None] = {"remote": None}
+
+
+def _months_ago(n: int) -> str:
+    """ISO date ~n months back (30-day months; good enough for a list window)."""
+    return (date.today() - timedelta(days=30 * n)).isoformat()
+
+
+def _complete_product(incomplete: str):
+    """Shell-completion for product args."""
+    for pid in PRODUCTS:
+        if pid.startswith(incomplete):
+            yield (pid, PRODUCT_LABELS.get(pid, ""))
+
+
+def _validate_product(value: str | None) -> str | None:
+    """Reject unknown product ids with a hint listing the valid ones."""
+    if value is None or value in PRODUCTS:
+        return value
+    raise typer.BadParameter(
+        f"unknown product {value!r}. Valid: {', '.join(PRODUCTS)} "
+        "(see `homewatch products`)"
+    )
+
+
+# Reusable parameter specs so every product argument behaves the same.
+def _product_arg():
+    return typer.Argument(..., callback=_validate_product,
+                          autocompletion=_complete_product,
+                          help="Product id (see `homewatch products`).")
 
 
 def _version_callback(value: bool) -> None:
@@ -199,14 +230,25 @@ def watch(
 
 @app.command()
 def releases(
-    product: str = typer.Option(None, help="Product id (see `homewatch products`)."),
-    since: str = typer.Option(None),
-    channel: str = typer.Option(None, help="stable | beta | rc"),
+    product: str = typer.Option(None, callback=_validate_product,
+                                autocompletion=_complete_product,
+                                help="Product id (see `homewatch products`)."),
+    months: int = typer.Option(3, help="Window in months; 0 = all time."),
+    since: str = typer.Option(None, help="Explicit ISO date (overrides --months)."),
+    channel: str = typer.Option("stable", help="Channel filter; ignored with --all."),
+    all_: bool = typer.Option(False, "--all", help="All channels, all time."),
     urls: bool = typer.Option(False, "-u", "--urls", help="Show upstream URLs."),
 ) -> None:
-    """List releases (newest first)."""
-    rows = _run(lambda b: b.releases(product=product, since=since, until=None,
-                                     channel=channel))
+    """List releases (newest first). Defaults to the last 3 months, stable."""
+    if all_:
+        since_eff, channel_eff = None, None
+    elif since:
+        since_eff, channel_eff = since, channel
+    else:
+        since_eff = _months_ago(months) if months > 0 else None
+        channel_eff = channel
+    rows = _run(lambda b: b.releases(product=product, since=since_eff, until=None,
+                                     channel=channel_eff))
     for r in rows:
         line = (f"{r.get('released_at') or '?':<20} {r['product']:<20} "
                 f"{r['version']:<12} {r.get('channel') or ''}")
@@ -216,7 +258,8 @@ def releases(
 
 
 @app.command()
-def latest(product: str, channel: str = typer.Option("stable")) -> None:
+def latest(product: str = _product_arg(),
+           channel: str = typer.Option("stable")) -> None:
     """Most recent release for a product."""
     row = _run(lambda b: b.latest(product, channel))
     if row is None:
@@ -229,7 +272,7 @@ def latest(product: str, channel: str = typer.Option("stable")) -> None:
 
 
 @app.command()
-def show(product: str, version: str = typer.Argument(None),
+def show(product: str = _product_arg(), version: str = typer.Argument(None),
          channel: str = typer.Option("stable")) -> None:
     """Show full release notes for a release (fetched on demand)."""
     row = _run(lambda b: b.show(product, version, channel))
@@ -291,6 +334,18 @@ def sources() -> None:
     for s in _run(lambda b: b.sources()):
         typer.echo(f"{s['name']:<20} {s.get('last_status') or '-':<10} "
                    f"{s.get('last_fetched_at') or 'never':<22} {s.get('url') or ''}")
+
+
+@app.command()
+def products() -> None:
+    """List valid product ids and the latest release we have for each."""
+    async def fn(b):
+        return [(pid, await b.latest(pid, "stable")) for pid in PRODUCTS]
+
+    for pid, row in _run(fn):
+        latest = (f"{row['version']} {row.get('date_display', '')}".strip()
+                  if row else "—")
+        typer.echo(f"{pid:<22} {PRODUCT_LABELS.get(pid, ''):<32} {latest}")
 
 
 @app.command()

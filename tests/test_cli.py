@@ -85,6 +85,32 @@ def test_latest_missing_exits_1():
     assert r.exit_code == 1
 
 
+def test_unknown_product_rejected_with_hint():
+    r = runner.invoke(app, ["latest", "bogusos"])
+    assert r.exit_code != 0
+    assert "unknown product" in r.output and "homepod_software" in r.output
+
+
+def test_products_lists_vocabulary():
+    r = runner.invoke(app, ["products"])
+    assert r.exit_code == 0
+    for pid in ("homepod_software", "tvos", "home_assistant_core"):
+        assert pid in r.output
+    assert "tracks tvOS" in r.output
+
+
+def test_releases_default_window_is_recent_stable(httpx_mock):
+    httpx_mock.add_response(url=HA_CORE_URL, content=(FIX / "ha_core.atom").read_bytes())
+    runner.invoke(app, ["refresh", "--source", "ha_core_atom"])
+    # ha_core.atom has a stable (2026.4.3) and a beta (2026.5.0b1); default
+    # excludes the beta. Both dates are old, so use --months 0 to see all.
+    out = runner.invoke(app, ["releases", "--months", "0"]).output
+    assert "2026.4.3" in out and "2026.5.0b1" not in out
+    # --all surfaces the beta too.
+    all_out = runner.invoke(app, ["releases", "--all"]).output
+    assert "2026.5.0b1" in all_out
+
+
 def test_parse_duration():
     assert parse_duration("30s") == 30
     assert parse_duration("5m") == 300

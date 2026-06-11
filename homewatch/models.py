@@ -23,6 +23,21 @@ PRODUCTS = (
 
 TIL_KINDS = ("down", "up", "note", "observation")
 
+# Human labels for the product vocabulary — surfaced by `homewatch products`
+# and CLI completion so valid ids are discoverable at every step.
+PRODUCT_LABELS = {
+    "home_assistant_core": "Home Assistant Core",
+    "home_assistant_os": "Home Assistant OS",
+    "homepod_software": "HomePod Software (tracks tvOS)",
+    "ios": "iOS",
+    "ipados": "iPadOS",
+    "macos": "macOS",
+    "tvos": "tvOS",
+    "watchos": "watchOS",
+    "visionos": "visionOS",
+    "safari": "Safari",
+}
+
 
 @dataclass(slots=True)
 class Release:

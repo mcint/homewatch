@@ -21,6 +21,8 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from . import __version__
+
 
 def _xdg(var: str, default_sub: str) -> Path:
     return Path(os.environ.get(var) or (Path.home() / default_sub))
@@ -77,7 +79,7 @@ class Settings(BaseSettings):
     homepod_discovery: Literal["pyatv", "zeroconf", "disabled"] = "disabled"
 
     bind: str = "127.0.0.1:8765"
-    user_agent: str = "homewatch/0.3 (+https://github.com/mcint/homewatch)"
+    user_agent: str = f"homewatch/{__version__} (+https://github.com/mcint/homewatch)"
 
     @property
     def bind_host(self) -> str:

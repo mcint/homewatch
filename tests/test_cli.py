@@ -235,6 +235,16 @@ def test_info_shows_db_path(tmp_path, monkeypatch):
     r = runner.invoke(app, ["info"])
     assert r.exit_code == 0
     assert "info.sqlite" in r.output
+    # Same content under the admin tree.
+    assert "info.sqlite" in runner.invoke(app, ["admin", "info"]).output
+
+
+def test_admin_migrate_status_and_backup():
+    runner.invoke(app, ["sources"])  # triggers get_db → applies migrations
+    st = runner.invoke(app, ["admin", "migrate", "status"])
+    assert st.exit_code == 0 and "applied" in st.output and "pending" in st.output
+    bk = runner.invoke(app, ["admin", "migrate", "backup"])
+    assert bk.exit_code == 0 and "backed up" in bk.output
 
 
 def test_watch_until_new_exits_when_release_lands(httpx_mock):

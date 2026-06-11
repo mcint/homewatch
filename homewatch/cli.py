@@ -54,11 +54,17 @@ til_app = typer.Typer(help="Append to the event log.", no_args_is_help=True,
                       context_settings=_CTX)
 probe_app = typer.Typer(help="Probe HA / HomePods on the LAN.", no_args_is_help=True,
                         context_settings=_CTX)
-devices_app = typer.Typer(help="Device inventory (list / show / retire / history).",
+devices_app = typer.Typer(help="Device inventory (list / show / rename / retire / history).",
                           no_args_is_help=True, context_settings=_CTX)
+admin_app = typer.Typer(help="Housekeeping: info, migrate, …",
+                        no_args_is_help=True, context_settings=_CTX)
+migrate_app = typer.Typer(help="Schema/data migrations.", no_args_is_help=True,
+                          context_settings=_CTX)
+admin_app.add_typer(migrate_app, name="migrate")
 app.add_typer(til_app, name="til", rich_help_panel=P_LOG)
 app.add_typer(probe_app, name="probe", rich_help_panel=P_DEPLOYED)
 app.add_typer(devices_app, name="devices", rich_help_panel=P_DEPLOYED)
+app.add_typer(admin_app, name="admin", rich_help_panel=P_META)
 
 _state: dict[str, str | None] = {"remote": None}
 
@@ -602,9 +608,7 @@ def products() -> None:
                    f"{latest:<26} {PRODUCT_PAGE.get(pid, '')}")
 
 
-@app.command(rich_help_panel=P_META)
-def info() -> None:
-    """Show effective paths and config (debug 'which DB am I using?')."""
+def _print_info() -> None:
     s = get_settings()
     typer.echo(f"homewatch {__version__}")
     typer.echo(f"db:          {s.db}{'' if s.db.exists() else '  (new)'}")
@@ -620,6 +624,56 @@ def info() -> None:
     extras = f"pyatv={_u.find_spec('pyatv') is not None} " \
              f"zeroconf={_u.find_spec('zeroconf') is not None}"
     typer.echo(f"homepod:     discovery={s.homepod_discovery}  {extras}")
+
+
+@app.command(rich_help_panel=P_META)
+def info() -> None:
+    """Show effective paths and config (debug 'which DB am I using?')."""
+    _print_info()
+
+
+@admin_app.command("info")
+def admin_info() -> None:
+    """Effective paths and config (alias of top-level `info`)."""
+    _print_info()
+
+
+@migrate_app.command("status")
+def migrate_status() -> None:
+    """Show applied vs pending schema migrations."""
+    from .db import connect, migration_status
+    conn = connect(get_settings().db)
+    try:
+        rows = migration_status(conn)
+    finally:
+        conn.close()
+    for num, applied in rows:
+        typer.echo(f"  {num:03d}  {'applied' if applied else 'PENDING'}")
+    pending = [n for n, a in rows if not a]
+    typer.echo(f"{len(rows)} migrations, {len(pending)} pending"
+               + (f": {pending}" if pending else ""))
+
+
+@migrate_app.command("backup")
+def migrate_backup() -> None:
+    """Copy the SQLite DB to a timestamped .bak before risky changes."""
+    import shutil
+    from datetime import datetime, timezone
+
+    from .db import connect, migration_status
+    s = get_settings()
+    if not s.db.exists():
+        typer.secho(f"no DB at {s.db}", fg=typer.colors.YELLOW, err=True)
+        raise typer.Exit(1)
+    conn = connect(s.db)
+    try:
+        ver = max((n for n, a in migration_status(conn) if a), default=0)
+    finally:
+        conn.close()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dest = s.db.with_suffix(f".v{ver:03d}-{stamp}.bak")
+    shutil.copy2(s.db, dest)
+    typer.echo(f"backed up → {dest}")
 
 
 @app.command(rich_help_panel=P_DAEMON)

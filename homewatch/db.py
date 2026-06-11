@@ -80,6 +80,13 @@ def migrate(conn: sqlite3.Connection) -> list[int]:
     return applied
 
 
+def migration_status(conn: sqlite3.Connection) -> list[tuple[int, bool]]:
+    """[(version, applied?), …] across all migration files, in order."""
+    _ensure_version_table(conn)
+    done = _applied_versions(conn)
+    return [(num, num in done) for num, _ in _migration_files()]
+
+
 def get_db(db_path: Path | str) -> sqlite3.Connection:
     """Connect and ensure the schema is current (bootstrap on first run)."""
     conn = connect(db_path)

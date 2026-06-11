@@ -44,9 +44,16 @@ Target: **Python primary**, separate VPS, single SQLite DB.
               (feedparser) (httpx+sel.) (pyatv, HA REST)
 ```
 
-One process. SQLite with WAL. No queue, no scheduler in v1 — every fetch is
-triggered by an HTTP request. A systemd timer can hit `/releases/refresh` on
-a cron-like cadence later.
+SQLite with WAL. No queue, no scheduler.
+
+**CLI-first (v1.1).** The primary way to use homewatch is the local CLI talking
+*directly* to the SQLite file and the upstream feeds — no server required. The
+FastAPI daemon is a *secondary transport* for reaching the same data from other
+devices. Both go through one core service layer (`sources.refresh`,
+`til.record`, `timeline.build`, `probes.*`); the CLI selects a **backend**
+(`client.py`): `LocalBackend` (direct DB + fetch, the default) or
+`RemoteBackend` (HTTP to a running daemon, when `HOMEWATCH_URL`/`--remote` is
+set). See §11 for the operation modes and §12 for on-demand notes.
 
 **Layout:**
 
@@ -55,7 +62,8 @@ homewatch/
 ├── pyproject.toml
 ├── homewatch/
 │   ├── __init__.py
-│   ├── app.py              # FastAPI app, route wiring
+│   ├── app.py              # FastAPI app, route wiring (secondary transport)
+│   ├── client.py           # LocalBackend / RemoteBackend — CLI transport
 │   ├── db.py               # sqlite connection + migrations
 │   ├── config.py           # pydantic-settings, .env
 │   ├── sources/
@@ -560,3 +568,105 @@ Pinned roughly to current ecosystem; adjust at build time.
 
 That's enough to look at the past month and see whether HomePod 18.x rollouts
 actually do precede HA breakage windows.
+
+---
+
+## 11. Operation modes (v1.1 — CLI-first)
+
+homewatch is a local tool first. Everything works from the CLI against the
+local SQLite file with no daemon running. The daemon and remote modes are
+additive, not required.
+
+### 11.1 Backends (`client.py`)
+
+One async `Backend` interface, two implementations the CLI picks between:
+
+```python
+class Backend(Protocol):
+    async def refresh(self, source: str | None) -> dict: ...
+    async def til(self, kind, target, text, tags, at, probe) -> int: ...
+    async def timeline(self, *, since, until, products, include_betas, fmt) -> str: ...
+    async def releases(self, *, product, since, until, channel) -> list[dict]: ...
+    async def latest(self, product, channel) -> dict | None: ...
+    async def show(self, product, version, channel) -> dict: ...   # full notes (§12)
+    async def probe_ha(self) -> dict: ...
+    async def probe_homepods(self) -> list[dict]: ...
+    async def sources(self) -> list[dict]: ...
+```
+
+- **`LocalBackend` (default).** Opens the DB (`get_db`), creates one httpx
+  client with the configured User-Agent, calls the core service functions
+  directly, and checkpoints the WAL on exit. This is what runs when you type
+  `homewatch refresh`. No network listener, no port.
+- **`RemoteBackend`.** Used when `HOMEWATCH_URL` (or `--remote URL`) is set:
+  the same methods, implemented as HTTP calls to a daemon, carrying the bearer
+  token. This is the cht.sh-style "drive a homewatch on the VPS from my laptop".
+
+Selection precedence: `--remote` flag > `HOMEWATCH_URL` env > local (default).
+
+### 11.2 Cadence
+
+- **Single-shot (default / cron-friendly).** `homewatch refresh [--probe]` does
+  one pull (and optional probe) and exits. Schedule it however you like:
+  `0 * * * * homewatch refresh` (hourly) or a launchd plist. This is the model:
+  the tool is a single-shot updater; the *scheduler* is cron/launchd/systemd.
+- **Watch loop (secondary — "watchman").** `homewatch watch` is a foreground
+  convenience that repeats the single-shot on an interval for a bounded window:
+  `--interval 1h`, `--for 7d`, optional `--until-new [--product P]` to exit
+  early the moment a new release lands (the "temporary active probing until an
+  update" case). It is just a loop over the single-shot path — no daemon.
+
+### 11.3 CLI surface (v1.1)
+
+```
+homewatch til down|up|note <target> [text] [--tag t]   # direct write, auto-probe
+homewatch refresh [--source S] [--probe]               # single-shot pull
+homewatch watch [--interval 1h] [--for 7d] [--until-new] [--product P] [--probe]
+homewatch releases [--product P] [--since D] [--channel C]
+homewatch latest <product> [--channel stable]
+homewatch show <product> [version]                     # full notes on demand (§12)
+homewatch timeline [--since D] [--products a,b] [--format md|json|html]
+homewatch probe ha | homepods
+homewatch sources                                      # streams + freshness (§12)
+homewatch serve [--reload]                             # run the daemon (secondary)
+```
+
+All read/write commands accept `--remote URL` to target a daemon instead of the
+local DB.
+
+---
+
+## 12. On-demand notes & update streams
+
+### 12.1 Summary now, full body on demand
+
+Refresh stores a **short summary** (excerpt, ~280 chars) plus the canonical
+**URL** for each release — never the full body — to keep the DB lean. The full
+release notes are fetched lazily:
+
+```
+homewatch show homepod_software 18.4
+homewatch show home_assistant_core            # latest stable if version omitted
+```
+
+`show` looks up the row, then fetches/extracts the full text from its source:
+re-parsing the HomePod notes page section, or fetching the GitHub release /
+HA blog post body and reducing it to readable text. Nothing is persisted by
+`show`; it's a live read of the linked stream.
+
+### 12.2 Update streams we link
+
+Every release row carries a `url` into the upstream "what's new" stream, and
+`homewatch sources` lists them with last-fetched freshness:
+
+| Product family        | Stream                                                              |
+|-----------------------|--------------------------------------------------------------------|
+| Home Assistant Core   | `github.com/home-assistant/core/releases` (atom)                   |
+| Home Assistant (blog) | `home-assistant.io/blog` / `atom.xml` — breaking changes           |
+| Home Assistant OS     | `github.com/home-assistant/operating-system/releases` (atom)       |
+| Apple security        | `support.apple.com/en-us/100100`                                   |
+| Apple developer       | `developer.apple.com/news/releases/` (rss)                         |
+| HomePod Software      | `support.apple.com/en-us/108045`                                   |
+
+These are the canonical Apple/HA update streams; `homewatch sources` is the
+one place to see them and whether our copy is fresh.

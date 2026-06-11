@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>homewatch · TIL</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 1.5rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.3rem; }
+  form { display: grid; gap: .6rem; margin: 1rem 0 1.5rem; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; }
+  fieldset { border: 0; padding: 0; margin: 0; display: flex; gap: 1rem; flex-wrap: wrap; }
+  label { font-size: .9rem; }
+  input[type=text], textarea { width: 100%; padding: .4rem; box-sizing: border-box; font: inherit; }
+  textarea { min-height: 3rem; }
+  button { justify-self: start; padding: .4rem 1rem; font: inherit; }
+  ul.log { list-style: none; padding: 0; }
+  ul.log li { padding: .4rem 0; border-bottom: 1px solid #eee; display: flex; gap: .6rem; align-items: baseline; }
+  .t { color: #666; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .k { font-weight: 600; }
+  .k.down { color: #a30; } .k.up { color: #0a6; } .k.note, .k.observation { color: #06a; }
+  .tags { color: #888; font-size: .85rem; }
+  .tgt { color: #444; }
+</style>
+</head>
+<body>
+<h1>homewatch — today I learned</h1>
+
+<form method="post" action="/til">
+  <fieldset>
+    <label><input type="radio" name="kind" value="down" checked> down</label>
+    <label><input type="radio" name="kind" value="up"> up</label>
+    <label><input type="radio" name="kind" value="note"> note</label>
+    <label><input type="radio" name="kind" value="observation"> observation</label>
+  </fieldset>
+  <label>target <input type="text" name="target" placeholder="homepod-kitchen / ha / ha+homepod"></label>
+  <label>text <textarea name="text" placeholder="what happened"></textarea></label>
+  <label>tags <input type="text" name="tags" placeholder="upgrade, maybe-fixed"></label>
+  <label>at (optional) <input type="text" name="at" placeholder="defaults to now"></label>
+  <button type="submit">record</button>
+</form>
+
+<h2>recent</h2>
+<ul class="log">
+  {% for e in events %}
+  <li>
+    <span class="t">{{ e.occurred_at }}</span>
+    <span class="k {{ e.kind }}">{{ e.kind }}</span>
+    {% if e.target %}<span class="tgt">[{{ e.target }}]</span>{% endif %}
+    <span class="body">{{ e.text }}</span>
+    {% if e.tags %}<span class="tags">{{ e.tags | join(", ") }}</span>{% endif %}
+  </li>
+  {% else %}
+  <li>(nothing logged yet)</li>
+  {% endfor %}
+</ul>
+</body>
+</html>

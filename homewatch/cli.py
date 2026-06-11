@@ -468,8 +468,9 @@ def devices_list_cmd(
         return
     for d in rows:
         net = d.get("ssid") or d.get("ip") or ""
+        shown = d.get("display_name") or d.get("name") or ""
         typer.echo(f"{d['device_id']:<26} {d['kind']:<14} "
-                   f"{d.get('name') or '':<18} {d.get('last_version') or '?':<10} "
+                   f"{shown:<18} {d.get('last_version') or '?':<10} "
                    f"{d.get('status'):<8} {net}")
 
 
@@ -489,6 +490,17 @@ def devices_retire_cmd(device_id: str) -> None:
     """Mark a device retired (dead/gone)."""
     ok = _run(lambda b: b.device_retire(device_id))
     typer.echo(f"retired {device_id}" if ok else "not found / already retired")
+
+
+@devices_app.command("rename")
+def devices_rename_cmd(
+    device_id: str,
+    display_name: str = typer.Argument(
+        "", help="New display name; empty clears it (reverts to detected)."),
+) -> None:
+    """Set a device's display name (kept separate from the detected name)."""
+    ok = _run(lambda b: b.device_rename(device_id, display_name or None))
+    typer.echo(f"renamed {device_id} → {display_name!r}" if ok else "no such device")
 
 
 @devices_app.command("history")
@@ -550,7 +562,8 @@ def status() -> None:
             verdict = typer.style("up to date", fg=typer.colors.GREEN)
         else:
             verdict = "(no release data)"
-        typer.echo(f"{d.get('name') or d['device_id']:<22} {d['kind']:<14} "
+        shown = d.get("display_name") or d.get("name") or d["device_id"]
+        typer.echo(f"{shown:<22} {d['kind']:<14} "
                    f"running {running:<10} {verdict}")
 
 

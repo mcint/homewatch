@@ -57,6 +57,22 @@ def test_list_excludes_retired_until_asked(db):
     assert any(e.kind == "retired" for e in til.query(db))
 
 
+def test_rename_sets_display_name_separate_from_detected(db):
+    devices.enroll(db, "AA:BB", "homepod", name="Bedroom")  # detected name
+    assert devices.rename(db, "AA:BB", "homepod-bedroom") is True
+    dev = devices.get(db, "AA:BB")
+    assert dev.name == "Bedroom" and dev.display_name == "homepod-bedroom"
+    assert devices.display(dev) == "homepod-bedroom"  # display_name wins
+    # Re-sighting must not clobber the chosen display name.
+    devices.record_sighting(db, device_id="AA:BB", kind="homepod", name="Bedroom",
+                            version="26.5")
+    assert devices.get(db, "AA:BB").display_name == "homepod-bedroom"
+    # Clearing reverts to detected.
+    devices.rename(db, "AA:BB", None)
+    assert devices.display(devices.get(db, "AA:BB")) == "Bedroom"
+    assert devices.rename(db, "nope", "x") is False
+
+
 def test_observe_homepod_auto_enrolls(db):
     p = Probe(target_kind="homepod", target_id="HP-ID", version="18.4",
               extra={"name": "homepod-kitchen", "deviceid": "AA:BB"})

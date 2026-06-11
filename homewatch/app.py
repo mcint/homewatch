@@ -393,6 +393,11 @@ def retire_device(conn: Conn, device_id: str) -> dict:
     return {"retired": devices_mod.retire(conn, device_id)}
 
 
+@devices_router.post("/rename")
+def rename_device(conn: Conn, device_id: str, display_name: str = "") -> dict:
+    return {"renamed": devices_mod.rename(conn, device_id, display_name or None)}
+
+
 for r in (releases_router, probe_router, til_router, drop_router, timeline_router,
           devices_router):
     app.include_router(r)

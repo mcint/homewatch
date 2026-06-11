@@ -92,7 +92,8 @@ class Device:
     device_id: str
     kind: str
     product: str | None = None
-    name: str | None = None
+    name: str | None = None          # detected (mDNS/AirPlay) name
+    display_name: str | None = None  # user-set override; wins for display
     identifiers: dict[str, Any] = field(default_factory=dict)
     enrolled_at: str | None = None
     last_seen_at: str | None = None

@@ -23,6 +23,7 @@ def _row_to_device(row: sqlite3.Row) -> Device:
         kind=row["kind"],
         product=row["product"],
         name=row["name"],
+        display_name=row["display_name"],
         identifiers=json.loads(row["identifiers"]) if row["identifiers"] else {},
         enrolled_at=row["enrolled_at"],
         last_seen_at=row["last_seen_at"],
@@ -131,6 +132,20 @@ def record_sighting(
         (utcnow(), version, ssid, subnet, ip, device_id),
     )
     return created
+
+
+def rename(conn: sqlite3.Connection, device_id: str, display_name: str | None) -> bool:
+    """Set (or clear, with None/'') a device's display name. Returns True if found."""
+    cur = conn.execute(
+        "UPDATE devices SET display_name=? WHERE device_id=?",
+        (display_name or None, device_id),
+    )
+    return cur.rowcount > 0
+
+
+def display(dev: Device) -> str:
+    """The name to show: user display_name > detected name > device_id."""
+    return dev.display_name or dev.name or dev.device_id
 
 
 def retire(conn: sqlite3.Connection, device_id: str) -> bool:

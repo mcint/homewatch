@@ -51,6 +51,7 @@ class Backend(Protocol):
     async def device_enroll(self, device_id: str, kind: str, *,
                             product: str | None, name: str | None) -> dict: ...
     async def device_retire(self, device_id: str) -> bool: ...
+    async def device_rename(self, device_id: str, display_name: str | None) -> bool: ...
     async def sources(self) -> list[dict]: ...
 
 
@@ -172,6 +173,9 @@ class LocalBackend:
     async def device_retire(self, device_id) -> bool:
         return devices_mod.retire(self.conn, device_id)
 
+    async def device_rename(self, device_id, display_name) -> bool:
+        return devices_mod.rename(self.conn, device_id, display_name)
+
     async def sources(self) -> list[dict]:
         out = []
         for src in sources.ALL_SOURCES:
@@ -292,6 +296,10 @@ class RemoteBackend:
     async def device_retire(self, device_id) -> bool:
         return (await self._json("POST", "/devices/retire",
                                  params={"device_id": device_id}))["retired"]
+
+    async def device_rename(self, device_id, display_name) -> bool:
+        return (await self._json("POST", "/devices/rename", params={
+            "device_id": device_id, "display_name": display_name or ""}))["renamed"]
 
     async def sources(self) -> list[dict]:
         return (await self._json("GET", "/releases/sources"))["sources"]

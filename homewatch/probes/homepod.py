@@ -38,7 +38,16 @@ def _is_homepod(model: str | None, txt: dict[str, Any]) -> bool:
 # --- pyatv ---------------------------------------------------------------------
 
 
-async def _scan_pyatv(timeout: float) -> list[dict]:
+def _service_props(atv) -> dict:
+    """Merge AirPlay/RAOP TXT records (osvers, model, am, deviceid, …)."""
+    out: dict = {}
+    for s in getattr(atv, "services", []) or []:
+        for k, v in (getattr(s, "properties", {}) or {}).items():
+            out.setdefault(k, v if isinstance(v, str) else str(v))
+    return out
+
+
+async def _scan_pyatv(timeout: float, hosts: list[str] | None = None) -> list[dict]:
     import asyncio
 
     try:
@@ -49,29 +58,44 @@ async def _scan_pyatv(timeout: float) -> list[dict]:
         ) from exc
 
     loop = asyncio.get_running_loop()
-    atvs = await pyatv.scan(loop, timeout=timeout)
+    atvs = await pyatv.scan(loop, timeout=timeout, hosts=hosts)
     out = []
     for atv in atvs:
         info = atv.device_info
+        txt = _service_props(atv)
         model_name = getattr(getattr(info, "model", None), "name", "") or ""
         out.append({
+            # model.name is flaky (often Unknown); fall back to the TXT model
+            # (e.g. AudioAccessory1,1) which is the reliable HomePod signal.
             "name": atv.name,
             "identifier": str(atv.identifier),
-            "model": model_name,
-            "version": getattr(info, "version", None),
+            "model": model_name or txt.get("model") or "",
+            "version": getattr(info, "version", None) or txt.get("osvers"),
             "build_number": getattr(info, "build_number", None),
+            "mac": getattr(info, "mac", None) or txt.get("deviceid"),
+            "address": str(getattr(atv, "address", "") or "") or None,
+            "txt": txt,
         })
     return out
 
 
-async def discover_pyatv(timeout: float = 5.0) -> list[Probe]:
-    """Discover HomePods with pyatv (preferred). Requires the ``probe`` extra."""
+async def discover_pyatv(timeout: float = 5.0,
+                         hosts: list[str] | None = None) -> list[Probe]:
+    """Discover HomePods with pyatv (preferred). Requires the ``probe`` extra.
+
+    ``hosts`` unicast-scans specific IPs — robust when multicast discovery is
+    flaky (the "I know the IP, just probe it" path).
+    """
     probes: list[Probe] = []
-    for dev in await _scan_pyatv(timeout):
-        if not _is_homepod(dev["model"], {}):
+    for dev in await _scan_pyatv(timeout, hosts=hosts):
+        # Check model + name + TXT (model.name alone misses Unknown-model HomePods).
+        if not _is_homepod(f"{dev['model']} {dev['name']}", dev["txt"]):
             continue
-        probes.append(Probe(target_kind="homepod", target_id=dev["identifier"],
-                            version=dev["version"], extra=dev))
+        probes.append(Probe(
+            target_kind="homepod", target_id=dev["identifier"],
+            version=dev["version"], extra=dev, ip=dev.get("address"),
+            mac=dev.get("mac"),
+        ))
     return probes
 
 
@@ -133,17 +157,22 @@ async def discover_zeroconf(timeout: float = 5.0) -> list[Probe]:
 # --- dispatch + raw debug scan -------------------------------------------------
 
 
-async def discover_raw(discovery: str = "pyatv", timeout: float = 5.0) -> list[dict]:
+async def discover_raw(discovery: str = "pyatv", timeout: float = 5.0,
+                       hosts: list[str] | None = None) -> list[dict]:
     """List EVERY AirPlay device discovered (no HomePod filter, no DB write).
 
     The debugging aid for "I'm not seeing my HomePod": shows what's actually on
-    the segment and the model string each device reports.
+    the segment, each device's model/version/IP, and whether we classify it as a
+    HomePod. ``hosts`` unicast-scans specific IPs.
     """
     if discovery == "disabled":
         return []
     if discovery == "pyatv":
-        return [{**d, "is_homepod": _is_homepod(d["model"], {})}
-                for d in await _scan_pyatv(timeout)]
+        return [{"name": d["name"], "identifier": d["identifier"],
+                 "model": d["model"], "version": d["version"],
+                 "ip": d.get("address"),
+                 "is_homepod": _is_homepod(f"{d['model']} {d['name']}", d["txt"])}
+                for d in await _scan_pyatv(timeout, hosts=hosts)]
     if discovery == "zeroconf":
         out = []
         for d in await _collect_airplay(timeout):
@@ -158,16 +187,17 @@ async def discover_raw(discovery: str = "pyatv", timeout: float = 5.0) -> list[d
 
 
 async def probe_homepods(
-    discovery: str = "pyatv", timeout: float = 5.0
+    discovery: str = "pyatv", timeout: float = 5.0, hosts: list[str] | None = None,
 ) -> list[Probe]:
     """Discover HomePods on the LAN via the configured backend.
 
     ``discovery`` is one of ``pyatv`` | ``zeroconf`` | ``disabled``.
+    ``hosts`` (pyatv only) unicast-scans specific IPs.
     """
     if discovery == "disabled":
         return []
     if discovery == "pyatv":
-        return await discover_pyatv(timeout)
+        return await discover_pyatv(timeout, hosts=hosts)
     if discovery == "zeroconf":
         return await discover_zeroconf(timeout)
     raise ValueError(f"unknown discovery backend {discovery!r}")

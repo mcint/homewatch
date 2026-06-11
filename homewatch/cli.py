@@ -394,6 +394,8 @@ def probe_ha_cmd() -> None:
 def probe_homepods_cmd(
     raw: bool = typer.Option(
         False, "--raw", help="List ALL AirPlay devices seen (debug, no DB write)."),
+    host: list[str] = typer.Option(
+        None, "--host", help="Unicast-scan specific IP(s) — pyatv, with --raw."),
 ) -> None:
     """Discover HomePods on the LAN and record a row each."""
     settings = get_settings()
@@ -407,7 +409,8 @@ def probe_homepods_cmd(
                         fg=typer.colors.YELLOW, err=True)
             raise typer.Exit(1)
         try:
-            devices = asyncio.run(probes.discover_raw(settings.homepod_discovery))
+            devices = asyncio.run(probes.discover_raw(
+                settings.homepod_discovery, hosts=host or None))
         except RuntimeError as exc:
             typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(1)

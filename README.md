@@ -86,8 +86,20 @@ uv sync --extra probe    # pyatv
 uv sync --extra zeroconf
 ```
 
-On a VPS, run the release/TIL halves remotely and a thin probe agent on the
-LAN that posts results up (see spec §7).
+Then enable discovery and probe (must be on the same L2 segment as the HomePods):
+
+```bash
+export HOMEWATCH_HOMEPOD_DISCOVERY=pyatv
+homewatch probe homepods            # records + auto-enrolls each HomePod
+homewatch probe homepods --raw      # debug: list every AirPlay device seen
+homewatch probe homepods --raw --host 192.168.1.42   # unicast a known IP
+homewatch devices list              # name, version, IP per device
+```
+
+Detection uses the AirPlay TXT (`AudioAccessory*` / `osvers`) and device name, so
+HomePods are found even when pyatv can't resolve their model. On a VPS, run the
+release/TIL halves remotely and a thin probe agent on the LAN that posts results
+up (see spec §7).
 
 ## Docs
 

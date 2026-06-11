@@ -65,6 +65,15 @@ def test_is_homepod_detection():
     assert not _is_homepod("AppleTV6,2", {})
 
 
+def test_homepod_detected_when_pyatv_model_unknown():
+    # The real-world flake: pyatv leaves model Unknown, but the AirPlay TXT
+    # carries AudioAccessory* and the name says HomePod. Either signal suffices.
+    from homewatch.probes.homepod import _is_homepod
+    assert _is_homepod("Bedroom", {"model": "AudioAccessory1,1"})  # via TXT
+    assert _is_homepod(" Bedroom HomePod", {})                     # via name
+    assert not _is_homepod("lilmbp", {"model": "Mac14,7"})         # a Mac, not a HomePod
+
+
 def test_insert_and_history(db):
     from homewatch.models import Probe
 

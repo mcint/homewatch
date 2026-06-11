@@ -25,7 +25,7 @@ def _device_identity(probe: Probe) -> dict:
     """Derive (device_id, kind, product, name, identifiers, mac) from a probe."""
     extra = probe.extra or {}
     if probe.target_kind == "homepod":
-        mac = extra.get("deviceid") or probe.target_id
+        mac = probe.mac or extra.get("mac") or extra.get("deviceid") or probe.target_id
         return {
             "device_id": probe.target_id or mac,
             "kind": "homepod",

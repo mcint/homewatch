@@ -11,7 +11,7 @@ import asyncio
 import json
 import re
 import time
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
 import httpx
@@ -59,9 +59,52 @@ app.add_typer(probe_app, name="probe", rich_help_panel=P_DEPLOYED)
 _state: dict[str, str | None] = {"remote": None}
 
 
-def _months_ago(n: int) -> str:
-    """ISO date ~n months back (30-day months; good enough for a list window)."""
-    return (date.today() - timedelta(days=30 * n)).isoformat()
+# systemd/journalctl-style relative time. Case matters: M=months, m=minutes.
+# Months/years are approximated (30/365 days) — fine for a list window.
+_SINCE_UNITS = {
+    "y": 31536000, "year": 31536000,
+    "M": 2592000, "month": 2592000,
+    "w": 604800, "week": 604800,
+    "d": 86400, "day": 86400,
+    "h": 3600, "hour": 3600, "hr": 3600,
+    "m": 60, "min": 60, "minute": 60,
+    "s": 1, "sec": 1, "second": 1,
+}
+_SINCE_TOKEN = re.compile(r"(\d+)\s*([A-Za-z]+)")
+
+
+def parse_since(text: str | None) -> str | None:
+    """Resolve a `--since` value to an ISO date cutoff, or None for 'all time'.
+
+    Accepts an absolute ISO date/datetime (`2026-01-01`), `0`/`all` (= None), or
+    a systemd-style relative span combining `<n><unit>` tokens, e.g.
+    `2y 2M 2w 2d 2h 2m 26000s`. Unit case is significant: `M` months, `m`
+    minutes.
+    """
+    if text is None:
+        return None
+    s = text.strip()
+    if s in ("", "0", "all"):
+        return None
+    if re.match(r"^\d{4}-\d{2}", s):  # absolute ISO date/datetime — pass through
+        return s
+    total = 0
+    matched = False
+    for m in _SINCE_TOKEN.finditer(s):
+        n, unit = m.group(1), m.group(2)
+        key = unit if unit in _SINCE_UNITS else unit.lower()
+        if key not in _SINCE_UNITS and len(key) > 1 and key.endswith("s"):
+            key = key[:-1]  # plural words: weeks -> week
+        if key not in _SINCE_UNITS:
+            raise typer.BadParameter(f"unknown time unit {unit!r} in --since {text!r}")
+        total += int(n) * _SINCE_UNITS[key]
+        matched = True
+    if not matched:
+        raise typer.BadParameter(
+            f"can't parse --since {text!r}; use e.g. 3M, 2w, 1d, an ISO date, or 0"
+        )
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=total)
+    return cutoff.date().isoformat()
 
 
 def _complete_product(incomplete: str):
@@ -241,22 +284,22 @@ def releases(
     product: str = typer.Option(None, callback=_validate_product,
                                 autocompletion=_complete_product,
                                 help="Product id (see `homewatch products`)."),
-    months: int = typer.Option(3, help="Window in months; 0 = all time."),
-    since: str = typer.Option(None, help="Explicit ISO date (overrides --months)."),
+    since: str = typer.Option(
+        None, help="Relative span (2y 2M 2w 2d 2h 2m 26000s) or ISO date; default all."),
     channel: str = typer.Option("stable", help="Channel filter; ignored with --all."),
-    all_: bool = typer.Option(False, "--all", help="All channels, all time."),
+    all_: bool = typer.Option(False, "--all", help="All channels (incl. beta/rc)."),
+    reverse: bool = typer.Option(False, "-r", "--reverse", help="Oldest first."),
     urls: bool = typer.Option(False, "-u", "--urls", help="Show upstream URLs."),
 ) -> None:
-    """List releases (newest first). Defaults to the last 3 months, stable."""
+    """List releases, newest first. Shows all stable by default; narrow with --since."""
     if all_:
         since_eff, channel_eff = None, None
-    elif since:
-        since_eff, channel_eff = since, channel
     else:
-        since_eff = _months_ago(months) if months > 0 else None
-        channel_eff = channel
+        since_eff, channel_eff = parse_since(since), channel
     rows = _run(lambda b: b.releases(product=product, since=since_eff, until=None,
                                      channel=channel_eff))
+    if reverse:  # rows arrive newest-first; flip for oldest-first
+        rows = list(reversed(rows))
     for r in rows:
         line = (f"{r.get('released_at') or '?':<20} {r['product']:<20} "
                 f"{r['version']:<12} {r.get('channel') or ''}")
@@ -298,14 +341,16 @@ def show(product: str = _product_arg(), version: str = typer.Argument(None),
 
 @app.command(rich_help_panel=P_QUERY)
 def timeline(
-    since: str = typer.Option(None),
+    since: str = typer.Option(
+        None, help="Relative span (e.g. 6M, 2w) or ISO date; default all."),
     products: str = typer.Option(None, help="Comma-separated product filter."),
     include_betas: bool = typer.Option(False),
     format: str = typer.Option("md", "--format", help="md | json | html"),
 ) -> None:
     """Print the merged timeline."""
     product_list = [p for p in (products or "").split(",") if p] or None
-    out = _run(lambda b: b.timeline(since=since, until=None, products=product_list,
+    out = _run(lambda b: b.timeline(since=parse_since(since), until=None,
+                                    products=product_list,
                                     include_betas=include_betas, fmt=format))
     typer.echo(out)
 

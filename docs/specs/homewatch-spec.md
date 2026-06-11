@@ -651,7 +651,7 @@ Selection precedence: `--remote` flag > `HOMEWATCH_URL` env > local (default).
 homewatch til down|up|note <target> [text] [--tag t]   # direct write, auto-probe
 homewatch refresh [--source S] [--probe]               # single-shot pull
 homewatch watch [--interval 1h] [--for 7d] [--until-new] [--product P] [--probe]
-homewatch releases [--product P] [--since D] [--channel C]
+homewatch releases [--product P] [--since 3M|2w|ISO] [--all] [-r] [--urls]
 homewatch latest <product> [--channel stable]
 homewatch show <product> [version]                     # full notes on demand (§12)
 homewatch timeline [--since D] [--products a,b] [--format md|json|html]

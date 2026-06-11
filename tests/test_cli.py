@@ -120,16 +120,51 @@ def test_products_lists_vocabulary():
     assert "support.apple.com/en-us/108045" in r.output
 
 
-def test_releases_default_window_is_recent_stable(httpx_mock):
+def test_releases_default_all_stable(httpx_mock):
     httpx_mock.add_response(url=HA_CORE_URL, content=(FIX / "ha_core.atom").read_bytes())
     runner.invoke(app, ["refresh", "--source", "ha_core_atom"])
-    # ha_core.atom has a stable (2026.4.3) and a beta (2026.5.0b1); default
-    # excludes the beta. Both dates are old, so use --months 0 to see all.
-    out = runner.invoke(app, ["releases", "--months", "0"]).output
+    # ha_core.atom has a stable (2026.4.3) and a beta (2026.5.0b1). Default shows
+    # all stable (no time window), excluding the beta.
+    out = runner.invoke(app, ["releases"]).output
     assert "2026.4.3" in out and "2026.5.0b1" not in out
     # --all surfaces the beta too.
-    all_out = runner.invoke(app, ["releases", "--all"]).output
-    assert "2026.5.0b1" in all_out
+    assert "2026.5.0b1" in runner.invoke(app, ["releases", "--all"]).output
+    # --since narrows by relative span (both releases are old, so 1d → empty).
+    assert "2026.4.3" not in runner.invoke(app, ["releases", "--since", "1d"]).output
+
+
+def test_releases_sort_order(httpx_mock):
+    httpx_mock.add_response(url=HA_CORE_URL, content=(FIX / "ha_core.atom").read_bytes())
+    runner.invoke(app, ["refresh", "--source", "ha_core_atom"])
+    # Default newest-first: 2026.4.3 (Apr) before 2026.5.0b1 (Apr 30)… both stable?
+    # ha_core has stable 2026.4.3 and beta 2026.5.0b1; with --all, newest first.
+    lines = [l for l in runner.invoke(app, ["releases", "--all"]).output.splitlines() if l.strip()]
+    assert lines[0].split()[0] >= lines[-1].split()[0]  # dates descending
+    rev = [l for l in runner.invoke(app, ["releases", "--all", "-r"]).output.splitlines() if l.strip()]
+    assert rev[0].split()[0] <= rev[-1].split()[0]       # ascending with -r
+
+
+def test_parse_since():
+    from datetime import datetime, timedelta, timezone
+
+    from homewatch.cli import parse_since
+
+    def days_ago(n):
+        return (datetime.now(timezone.utc) - timedelta(days=n)).date().isoformat()
+
+    assert parse_since(None) is None
+    assert parse_since("0") is None
+    assert parse_since("all") is None
+    assert parse_since("2026-01-01") == "2026-01-01"        # ISO passthrough
+    assert parse_since("2w") == days_ago(14)
+    assert parse_since("2M") == days_ago(60)                # capital M = months
+    assert parse_since("5m") == days_ago(0)                 # lower m = minutes → today
+    assert parse_since("1w 2d") == days_ago(9)              # combined
+    assert parse_since("1y") == days_ago(365)
+    import pytest
+    import typer
+    with pytest.raises(typer.BadParameter):
+        parse_since("3x")
 
 
 def test_parse_duration():

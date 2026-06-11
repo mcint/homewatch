@@ -663,6 +663,67 @@ homewatch serve [--reload]                             # run the daemon (seconda
 All read/write commands accept `--remote URL` to target a daemon instead of the
 local DB.
 
+### 11.4 CLI grammar — the verb × noun target
+
+The command surface is designed as a **Cartesian product**, not a pile of
+one-off commands. Every command is one cell of:
+
+```
+VERB  ×  NOUN     with two orthogonal envelopes:  TRANSPORT  ×  FORMAT
+```
+
+This is the grammar new commands must fit. If a desired action doesn't read as
+a `(verb, noun)` with a known transport/format, that's a smell — fix the factor,
+not the cell.
+
+**Verbs** (intent — these are the `-h` help panels):
+
+| Verb        | Means                              | Commands                          |
+|-------------|------------------------------------|-----------------------------------|
+| **fetch**   | pull upstream into the local DB    | `refresh`, `watch`                |
+| **query**   | read what we already have          | `releases`, `latest`, `show`, `timeline`, `products`, `sources` |
+| **probe**   | observe *deployed* running versions| `probe ha`, `probe homepods`      |
+| **log**     | record human observations          | `til down`/`up`/`note`            |
+| **admin**   | inspect/serve the tool itself      | `info`, `serve`                   |
+
+**Nouns** (object — the key conceptual axis the project turns on):
+
+| Noun         | Is                                              | Source            |
+|--------------|-------------------------------------------------|-------------------|
+| **release**  | a version *available* upstream                  | `sources/*`       |
+| **deployed** | a version *running* on a device (HA/HomePod)    | `probes/*`        |
+| **event**    | a human TIL observation                         | `til`             |
+| **timeline** | the time-ordered **join** of the three (the mix)| `timeline.build`  |
+| **source**   | an upstream stream + freshness                  | `source_state`    |
+| **product**  | the vocabulary releases/deployed are keyed on   | `models.PRODUCTS` |
+
+So "releases vs deployed vs the mix" is literally the noun axis: `releases`
+(available) — `probe`/`deployed` (running) — `timeline` (correlated). Asking
+"is my HomePod behind?" is `query × (release ⋈ deployed)`.
+
+**Envelopes** (apply uniformly, never per-command bespoke):
+
+- **Transport** — `local` (default, direct SQLite + fetch) or `remote`
+  (`--remote URL` / `HOMEWATCH_URL`). Same verbs, same output.
+- **Format** — `plain` (default), `--format json|md|html` for `timeline`,
+  `--format json|tsv|html` for events; `--urls` surfaces upstream links.
+
+**Filled matrix today** (— = intentional gap / future):
+
+| verb \ noun | release                    | deployed        | event          | timeline   |
+|-------------|----------------------------|-----------------|----------------|------------|
+| fetch       | `refresh`, `watch`         | (via `--probe`) | —              | —          |
+| query       | `releases`/`latest`/`show` | `probe history` | (read on `til`)| `timeline` |
+| probe       | —                          | `probe ha/homepods` | —          | —          |
+| log         | —                          | —               | `til down/up/note` | —      |
+
+Open cells worth filling (see STATUS): a `status` command for `query ×
+(release ⋈ deployed)` ("am I behind?"), and notify-on-`watch --until-new`.
+
+**Convention going forward:** commands read `verb [noun] [object] [--envelope]`.
+Current short names (`refresh`, `releases`) are the common-path aliases; new
+surface area gets a `(verb, noun)` cell or it doesn't ship.
+
 ---
 
 ## 12. On-demand notes & update streams

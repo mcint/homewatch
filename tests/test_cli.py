@@ -69,6 +69,21 @@ def test_probe_homepods_disabled_message():
     assert "no homepods" in r.output
 
 
+def test_probe_history_empty_then_populated():
+    assert "no probes recorded" in runner.invoke(app, ["probe", "history"]).output
+    # Seed a probe row directly in the CLI's DB, then read it back.
+    from homewatch import probes
+    from homewatch.db import get_db
+    from homewatch.models import Probe
+    conn = get_db(get_settings().db)
+    probes.insert_probe(conn, Probe(target_kind="home_assistant", target_id="ha",
+                                    version="2026.4.3"))
+    conn.close()
+    out = runner.invoke(app, ["probe", "history"]).output
+    assert "home_assistant" in out and "2026.4.3" in out
+
+
+
 def test_remote_mode_uses_daemon(httpx_mock):
     httpx_mock.add_response(
         url="http://daemon.test/til/drop/up/homepod-kitchen?text=&tags=&probe=true",

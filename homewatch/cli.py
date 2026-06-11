@@ -36,6 +36,14 @@ def parse_duration(text: str) -> int:
 # Accept -h everywhere (top-level and subcommands inherit via context).
 _CTX = {"help_option_names": ["-h", "--help"]}
 
+# Help panels — group commands by verb/intent (shown in `homewatch -h`).
+P_FETCH = "Fetch — pull upstream data"
+P_QUERY = "Query — releases & timeline"
+P_DEPLOYED = "Deployed — running versions on the LAN"
+P_LOG = "Log — your observations"
+P_META = "Discover & meta"
+P_DAEMON = "Daemon"
+
 app = typer.Typer(
     help="homewatch — HA × Apple/HomePod release correlator (local-first).",
     no_args_is_help=True,
@@ -45,8 +53,8 @@ til_app = typer.Typer(help="Append to the event log.", no_args_is_help=True,
                       context_settings=_CTX)
 probe_app = typer.Typer(help="Probe HA / HomePods on the LAN.", no_args_is_help=True,
                         context_settings=_CTX)
-app.add_typer(til_app, name="til")
-app.add_typer(probe_app, name="probe")
+app.add_typer(til_app, name="til", rich_help_panel=P_LOG)
+app.add_typer(probe_app, name="probe", rich_help_panel=P_DEPLOYED)
 
 _state: dict[str, str | None] = {"remote": None}
 
@@ -157,7 +165,7 @@ async def _refresh_impl(b: Backend, source: str | None, probe: bool) -> dict:
     return out
 
 
-@app.command()
+@app.command(rich_help_panel=P_FETCH)
 def refresh(
     source: str = typer.Option(None, help="Single source name; default all."),
     probe: bool = typer.Option(False, help="Also probe HA + HomePods (single-shot)."),
@@ -204,7 +212,7 @@ async def _watch_impl(b, *, interval_s, total_s, until_new, product, source, pro
         await asyncio.sleep(interval_s)
 
 
-@app.command()
+@app.command(rich_help_panel=P_FETCH)
 def watch(
     interval: str = typer.Option("1h", help="Poll cadence, e.g. 30s 5m 1h 1d."),
     duration: str = typer.Option("0", "--for", help="Window, e.g. 7d; 0 = forever."),
@@ -228,7 +236,7 @@ def watch(
         typer.echo("\nstopped")
 
 
-@app.command()
+@app.command(rich_help_panel=P_QUERY)
 def releases(
     product: str = typer.Option(None, callback=_validate_product,
                                 autocompletion=_complete_product,
@@ -257,7 +265,7 @@ def releases(
         typer.echo(line)
 
 
-@app.command()
+@app.command(rich_help_panel=P_QUERY)
 def latest(product: str = _product_arg(),
            channel: str = typer.Option("stable")) -> None:
     """Most recent release for a product."""
@@ -271,7 +279,7 @@ def latest(product: str = _product_arg(),
         typer.echo(row["url"])
 
 
-@app.command()
+@app.command(rich_help_panel=P_QUERY)
 def show(product: str = _product_arg(), version: str = typer.Argument(None),
          channel: str = typer.Option("stable")) -> None:
     """Show full release notes for a release (fetched on demand)."""
@@ -288,7 +296,7 @@ def show(product: str = _product_arg(), version: str = typer.Argument(None),
     typer.echo(row.get("notes_full") or row.get("notes") or "(no notes)")
 
 
-@app.command()
+@app.command(rich_help_panel=P_QUERY)
 def timeline(
     since: str = typer.Option(None),
     products: str = typer.Option(None, help="Comma-separated product filter."),
@@ -325,10 +333,26 @@ def probe_homepods_cmd() -> None:
         typer.echo(f"{hp['target_id']}: {hp.get('version')}")
 
 
+@probe_app.command("history")
+def probe_history_cmd(
+    target_kind: str = typer.Option(None, help="home_assistant | homepod"),
+    limit: int = typer.Option(20),
+) -> None:
+    """Show recorded deployed (running) versions over time."""
+    rows = _run(lambda b: b.probe_history(target_kind=target_kind,
+                                          target_id=None, limit=limit))
+    if not rows:
+        typer.echo("no probes recorded yet (run `homewatch probe ha|homepods`)")
+    for r in rows:
+        ver = r.get("version") or f"FAIL: {r.get('error')}"
+        typer.echo(f"{r['probed_at']:<20} {r['target_kind']:<15} "
+                   f"{r['target_id']:<24} {ver}")
+
+
 # --- meta ----------------------------------------------------------------------
 
 
-@app.command()
+@app.command(rich_help_panel=P_META)
 def sources() -> None:
     """List release sources, their update streams, and freshness."""
     for s in _run(lambda b: b.sources()):
@@ -336,7 +360,7 @@ def sources() -> None:
                    f"{s.get('last_fetched_at') or 'never':<22} {s.get('url') or ''}")
 
 
-@app.command()
+@app.command(rich_help_panel=P_META)
 def products() -> None:
     """List valid product ids and the latest release we have for each."""
     async def fn(b):
@@ -348,7 +372,7 @@ def products() -> None:
         typer.echo(f"{pid:<22} {PRODUCT_LABELS.get(pid, ''):<32} {latest}")
 
 
-@app.command()
+@app.command(rich_help_panel=P_META)
 def info() -> None:
     """Show effective paths and config (debug 'which DB am I using?')."""
     s = get_settings()
@@ -360,7 +384,7 @@ def info() -> None:
     typer.echo(f"remote:      {_state['remote'] or s.url or '(local)'}")
 
 
-@app.command()
+@app.command(rich_help_panel=P_DAEMON)
 def serve(reload: bool = typer.Option(False, help="Auto-reload (dev).")) -> None:
     """Run the homewatch daemon (secondary transport for other devices)."""
     import uvicorn

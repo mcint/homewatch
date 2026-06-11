@@ -41,6 +41,8 @@ class Backend(Protocol):
     async def show(self, product: str, version: str | None, channel: str) -> dict | None: ...
     async def probe_ha(self) -> dict: ...
     async def probe_homepods(self) -> list[dict]: ...
+    async def probe_history(self, *, target_kind: str | None,
+                            target_id: str | None, limit: int) -> list[dict]: ...
     async def sources(self) -> list[dict]: ...
 
 
@@ -133,6 +135,11 @@ class LocalBackend:
             out.append({"id": pid, "target_id": probe.target_id,
                         "version": probe.version})
         return out
+
+    async def probe_history(self, *, target_kind, target_id, limit) -> list[dict]:
+        rows = probes.history(self.conn, target_kind=target_kind,
+                              target_id=target_id, limit=limit)
+        return [_row_dict(r) for r in rows]
 
     async def sources(self) -> list[dict]:
         out = []
@@ -227,6 +234,12 @@ class RemoteBackend:
 
     async def probe_homepods(self) -> list[dict]:
         return (await self._json("POST", "/probe/homepods"))["homepods"]
+
+    async def probe_history(self, *, target_kind, target_id, limit) -> list[dict]:
+        params = {k: v for k, v in
+                  {"target_kind": target_kind, "target_id": target_id,
+                   "limit": limit}.items() if v is not None}
+        return (await self._json("GET", "/probe/history", params=params))["probes"]
 
     async def sources(self) -> list[dict]:
         return (await self._json("GET", "/releases/sources"))["sources"]

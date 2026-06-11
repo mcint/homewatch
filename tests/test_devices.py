@@ -57,6 +57,35 @@ def test_list_excludes_retired_until_asked(db):
     assert any(e.kind == "retired" for e in til.query(db))
 
 
+def test_observe_homepod_auto_enrolls(db):
+    p = Probe(target_kind="homepod", target_id="HP-ID", version="18.4",
+              extra={"name": "homepod-kitchen", "deviceid": "AA:BB"})
+    pid = probes.observe(db, p, ssid="home", subnet="10.0.0.0/24")
+    assert pid > 0
+    dev = devices.get(db, "HP-ID")
+    assert dev.kind == "homepod" and dev.product == "homepod_software"
+    assert dev.last_version == "18.4" and dev.name == "homepod-kitchen"
+    assert dev.ssid == "home" and dev.identifiers.get("mac") == "AA:BB"
+    row = db.execute("SELECT * FROM probes").fetchone()
+    assert row["device_id"] == "HP-ID" and row["mac"] == "AA:BB"
+
+
+def test_observe_ha_derives_product_from_install_type(db):
+    p = Probe(target_kind="home_assistant", target_id="http://hass:8123",
+              version="2026.4.3", extra={"installation_type": "Home Assistant OS"})
+    probes.observe(db, p)
+    dev = devices.get(db, "http://hass:8123")
+    assert dev.kind == "home_assistant" and dev.product == "home_assistant_os"
+
+
+def test_observe_failed_probe_records_but_does_not_enroll(db):
+    p = Probe(target_kind="home_assistant", target_id="http://hass:8123",
+              error="HTTP 401")
+    probes.observe(db, p)
+    assert devices.get(db, "http://hass:8123") is None  # failure ≠ sighting
+    assert db.execute("SELECT COUNT(*) c FROM probes").fetchone()["c"] == 1
+
+
 def test_probe_persists_network_columns(db):
     probes.insert_probe(db, Probe(target_kind="homepod", target_id="hk",
                                   version="18.4", device_id="AA:BB", mac="AA:BB",

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from .. import devices
 from ..db import utcnow
 from ..models import Probe
 from .ha import probe_ha
@@ -17,7 +18,58 @@ if TYPE_CHECKING:
     from ..config import Settings
 
 __all__ = ["probe_ha", "probe_homepods", "discover_raw", "insert_probe",
-           "history", "autoprobe"]
+           "history", "autoprobe", "observe"]
+
+
+def _device_identity(probe: Probe) -> dict:
+    """Derive (device_id, kind, product, name, identifiers, mac) from a probe."""
+    extra = probe.extra or {}
+    if probe.target_kind == "homepod":
+        mac = extra.get("deviceid") or probe.target_id
+        return {
+            "device_id": probe.target_id or mac,
+            "kind": "homepod",
+            "product": "homepod_software",
+            "name": extra.get("name") or probe.target_id or mac,
+            "identifiers": {k: v for k, v in
+                            {"mac": mac, "mdns": extra.get("name")}.items() if v},
+            "mac": mac,
+        }
+    install = (extra.get("installation_type") or "").lower()
+    return {
+        "device_id": probe.target_id,
+        "kind": "home_assistant",
+        "product": "home_assistant_os" if "os" in install else "home_assistant_core",
+        "name": probe.target_id,
+        "identifiers": {"url": probe.target_id},
+        "mac": None,
+    }
+
+
+def observe(
+    conn: sqlite3.Connection, probe: Probe, *,
+    ssid: str | None = None, subnet: str | None = None, ip: str | None = None,
+) -> int:
+    """Persist a probe row AND auto-enroll/update its device (spec §13).
+
+    A successful probe is a sighting: it upserts the device (last_seen, version,
+    network context) and writes an `enrolled` event on first sight. Failures are
+    still recorded as probe rows (HA down is signal) but don't enroll.
+    """
+    ident = _device_identity(probe)
+    probe.device_id = ident["device_id"]
+    probe.mac = probe.mac or ident["mac"]
+    probe.ssid = probe.ssid or ssid
+    probe.subnet = probe.subnet or subnet
+    probe.ip = probe.ip or ip
+    if probe.error is None:
+        devices.record_sighting(
+            conn, device_id=ident["device_id"], kind=ident["kind"],
+            version=probe.version, product=ident["product"], name=ident["name"],
+            identifiers=ident["identifiers"], ssid=probe.ssid, subnet=probe.subnet,
+            ip=probe.ip,
+        )
+    return insert_probe(conn, probe)
 
 
 def insert_probe(conn: sqlite3.Connection, probe: Probe) -> int:
@@ -67,10 +119,10 @@ async def autoprobe(
             probe = await probe_ha(
                 settings.ha_url, settings.ha_token, client=client, timeout=5
             )
-            ids.append(insert_probe(conn, probe))
+            ids.append(observe(conn, probe))  # auto-enroll; netinfo skipped (fast path)
         if t.startswith("homepod") and settings.homepod_discovery != "disabled":
             for probe in await probe_homepods(settings.homepod_discovery):
-                ids.append(insert_probe(conn, probe))
+                ids.append(observe(conn, probe))
     except Exception:  # noqa: BLE001 — bonus probe, must not break the caller
         pass
     return ids

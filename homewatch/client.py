@@ -18,7 +18,8 @@ from typing import Protocol
 
 import httpx
 
-from . import notes, probes, sources, til, timeline
+from . import devices as devices_mod
+from . import netinfo, notes, probes, sources, til, timeline
 from .config import Settings
 from .db import checkpoint, get_db
 from .sources import base
@@ -130,15 +131,16 @@ class LocalBackend:
         probe = await probes.probe_ha(
             self.settings.ha_url, self.settings.ha_token, client=self.client
         )
-        pid = probes.insert_probe(self.conn, probe)
+        pid = probes.observe(self.conn, probe, **netinfo.context())
         return {"id": pid, "version": probe.version, "ok": probe.error is None,
                 "error": probe.error}
 
     async def probe_homepods(self) -> list[dict]:
         found = await probes.probe_homepods(self.settings.homepod_discovery)
+        ctx = netinfo.context()
         out = []
         for probe in found:
-            pid = probes.insert_probe(self.conn, probe)
+            pid = probes.observe(self.conn, probe, **ctx)
             out.append({"id": pid, "target_id": probe.target_id,
                         "version": probe.version})
         return out

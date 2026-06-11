@@ -25,7 +25,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import notes
+from . import netinfo, notes
 from . import probes as probes_mod
 from . import sources, til, timeline
 from .config import Settings, get_settings
@@ -195,7 +195,7 @@ probe_router = APIRouter(prefix="/probe", tags=["probe"], dependencies=auth)
 @probe_router.post("/ha")
 async def probe_ha(conn: Conn, client: Client, settings: Cfg) -> dict:
     probe = await probes_mod.probe_ha(settings.ha_url, settings.ha_token, client=client)
-    pid = probes_mod.insert_probe(conn, probe)
+    pid = probes_mod.observe(conn, probe, **netinfo.context())
     return {"id": pid, "version": probe.version, "ok": probe.error is None,
             "error": probe.error}
 
@@ -203,9 +203,10 @@ async def probe_ha(conn: Conn, client: Client, settings: Cfg) -> dict:
 @probe_router.post("/homepods")
 async def probe_homepods(conn: Conn, settings: Cfg) -> dict:
     found = await probes_mod.probe_homepods(settings.homepod_discovery)
+    ctx = netinfo.context()
     out = []
     for probe in found:
-        pid = probes_mod.insert_probe(conn, probe)
+        pid = probes_mod.observe(conn, probe, **ctx)
         out.append({"id": pid, "target_id": probe.target_id, "version": probe.version})
     return {"discovery": settings.homepod_discovery, "homepods": out}
 

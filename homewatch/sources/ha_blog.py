@@ -13,7 +13,12 @@ import feedparser
 import httpx
 
 from ..models import Release, SourceState
-from .base import conditional_headers, feed_published_iso
+from .base import (
+    conditional_headers,
+    feed_content_text,
+    feed_published_iso,
+    summarize,
+)
 
 URL = "https://www.home-assistant.io/atom.xml"
 
@@ -44,7 +49,7 @@ class HABlogSource:
             m = _RELEASE_TITLE.match(title)
             if not m:
                 continue
-            summary = (entry.get("summary") or "").strip() or None
+            summary = summarize(feed_content_text(entry))
             out.append(
                 Release(
                     product=self.product,

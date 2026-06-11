@@ -143,6 +143,29 @@ def test_unknown_source_rejected():
         sources.select_sources("nope")
 
 
+def test_summarize_trims_to_word_boundary():
+    assert base.summarize(None) is None
+    assert base.summarize("short") == "short"
+    s = base.summarize("alpha " * 100)  # ~600 chars
+    assert s.endswith("…") and len(s) <= base.SUMMARY_LIMIT + 1
+
+
+def test_feed_content_text_strips_html():
+    entry = {"content": [{"value": "<p>Hello <b>world</b></p>"}]}
+    assert base.feed_content_text(entry) == "Hello world"
+    assert base.feed_content_text({"summary": "plain"}) == "plain"
+    assert base.feed_content_text({}) is None
+
+
+def test_homepod_stores_summary_but_parse_keeps_full():
+    long_body = "improvement " * 80  # ~960 chars
+    html = (f"<html><body><h2>Software version 18.4</h2>"
+            f"<p>{long_body}</p></body></html>")
+    full = HomePodNotesSource().parse(html)[0].notes
+    assert len(full) > base.SUMMARY_LIMIT  # parse() keeps the full body for `show`
+    assert len(base.summarize(full)) <= base.SUMMARY_LIMIT + 1
+
+
 def test_upsert_gap_fills_across_sources(db):
     from homewatch.models import Release
 

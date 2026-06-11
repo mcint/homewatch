@@ -15,9 +15,14 @@ from datetime import datetime, timezone
 from typing import Protocol, runtime_checkable
 
 import httpx
+from selectolax.parser import HTMLParser
 
 from ..db import utcnow
 from ..models import Release, SourceState
+
+# Stored notes are a short summary (spec §12.1); full bodies are fetched on
+# demand by notes.fetch_full_notes.
+SUMMARY_LIMIT = 280
 
 
 @runtime_checkable
@@ -96,6 +101,30 @@ def parse_human_date(text: str | None) -> str | None:
         except ValueError:
             continue
     return None
+
+
+def summarize(text: str | None, limit: int = SUMMARY_LIMIT) -> str | None:
+    """Collapse whitespace and trim to a word-boundary excerpt (spec §12.1)."""
+    if not text:
+        return None
+    t = " ".join(text.split())
+    if len(t) <= limit:
+        return t
+    return t[:limit].rsplit(" ", 1)[0] + "…"
+
+
+def feed_content_text(entry) -> str | None:
+    """Plain text from a feedparser entry's content/summary (HTML stripped)."""
+    raw = ""
+    if entry.get("content"):
+        raw = entry["content"][0].get("value", "")
+    if not raw:
+        raw = entry.get("summary", "")
+    if not raw:
+        return None
+    if "<" in raw:
+        raw = HTMLParser(raw).text(separator=" ", strip=True)
+    return raw or None
 
 
 def sha1(*parts: str) -> str:

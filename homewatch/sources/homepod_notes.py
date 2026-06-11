@@ -17,7 +17,7 @@ import httpx
 from selectolax.parser import HTMLParser
 
 from ..models import Release, SourceState
-from .base import conditional_headers, sha1
+from .base import conditional_headers, sha1, summarize
 
 logger = logging.getLogger("homewatch.sources.homepod_notes")
 
@@ -36,7 +36,9 @@ _VERSION_HEADER_RE = re.compile(
 # sources into one row, so we deliberately leave released_at=None here rather
 # than risk a false date scraped out of the notes prose.
 
-_NOTES_CAP = 1000
+# parse() returns the full-ish section body (for `show`); fetch() summarizes it
+# down to a short excerpt before it reaches the DB (spec §12.1).
+_NOTES_CAP = 8000
 
 
 class HomePodNotesSource:
@@ -53,7 +55,11 @@ class HomePodNotesSource:
         r.raise_for_status()
         state.etag = r.headers.get("ETag", state.etag)
         state.last_modified = r.headers.get("Last-Modified", state.last_modified)
-        return self.parse(r.text, state)
+        releases = self.parse(r.text, state)
+        # Store only a short summary; `show` re-parses for the full body.
+        for rel in releases:
+            rel.notes = summarize(rel.notes)
+        return releases
 
     def parse(self, html: str, state: SourceState | None = None) -> list[Release]:
         text = HTMLParser(html).body.text(separator="\n", strip=True) if html else ""

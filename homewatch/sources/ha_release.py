@@ -10,7 +10,9 @@ from .base import (
     clean_version,
     conditional_headers,
     detect_channel,
+    feed_content_text,
     feed_published_iso,
+    summarize,
 )
 
 URL = "https://github.com/home-assistant/core/releases.atom"
@@ -49,6 +51,7 @@ class HAReleaseSource:
                     url=entry.get("link"),
                     source=self.name,
                     raw_id=entry.get("id") or entry.get("link"),
+                    notes=summarize(feed_content_text(entry)),
                 )
             )
         return out

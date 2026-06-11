@@ -97,3 +97,54 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings(_env_file=env_files())
+
+
+# --- writable config file (persist settings once) -----------------------------
+
+SECRET_KEYS = frozenset({"token", "ha_token"})
+
+
+def setting_keys() -> tuple[str, ...]:
+    """Settable HOMEWATCH_* keys (the Settings fields)."""
+    return tuple(Settings.model_fields)
+
+
+def config_file() -> Path:
+    """The per-user config file we write to (HOMEWATCH_HOME/env or XDG env)."""
+    home = os.environ.get("HOMEWATCH_HOME")
+    base = Path(home).expanduser() if home else config_root()
+    return base / "env"
+
+
+def normalize_key(key: str) -> str:
+    """Accept 'homepod_discovery' or 'HOMEWATCH_HOMEPOD_DISCOVERY' → field name."""
+    k = key.strip().lower()
+    if k.startswith("homewatch_"):
+        k = k[len("homewatch_"):]
+    if k not in Settings.model_fields:
+        raise KeyError(key)
+    return k
+
+
+def write_config_value(key: str, value: str) -> Path:
+    """Upsert ``HOMEWATCH_<KEY>=value`` in the per-user config file (dotenv).
+
+    Preserves other lines/comments. Returns the file path. Raises KeyError for
+    an unknown setting.
+    """
+    field = normalize_key(key)
+    env_key = f"HOMEWATCH_{field.upper()}"
+    path = config_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    out, replaced = [], False
+    for ln in lines:
+        if ln.lstrip().startswith(f"{env_key}="):
+            out.append(f"{env_key}={value}")
+            replaced = True
+        else:
+            out.append(ln)
+    if not replaced:
+        out.append(f"{env_key}={value}")
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return path

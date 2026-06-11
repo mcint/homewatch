@@ -20,6 +20,7 @@ import typer
 
 from . import __version__, logconfig
 from .client import Backend, get_backend
+from . import config as config_mod
 from .config import config_root, env_files, get_settings
 from .models import DEVICE_KINDS, PRODUCT_LABELS, PRODUCT_PAGE, PRODUCTS
 
@@ -60,7 +61,10 @@ admin_app = typer.Typer(help="Housekeeping: info, migrate, …",
                         no_args_is_help=True, context_settings=_CTX)
 migrate_app = typer.Typer(help="Schema/data migrations.", no_args_is_help=True,
                           context_settings=_CTX)
+config_cmd_app = typer.Typer(help="Persisted settings (the XDG env file).",
+                             no_args_is_help=True, context_settings=_CTX)
 admin_app.add_typer(migrate_app, name="migrate")
+admin_app.add_typer(config_cmd_app, name="config")
 app.add_typer(til_app, name="til", rich_help_panel=P_LOG)
 app.add_typer(probe_app, name="probe", rich_help_panel=P_DEPLOYED)
 app.add_typer(devices_app, name="devices", rich_help_panel=P_DEPLOYED)
@@ -683,6 +687,56 @@ def info() -> None:
 def admin_info() -> None:
     """Effective paths and config (alias of top-level `info`)."""
     _print_info()
+
+
+def _complete_setting(incomplete: str):
+    return [k for k in config_mod.setting_keys() if k.startswith(incomplete)]
+
+
+@config_cmd_app.command("set")
+def config_set(
+    key: str = typer.Argument(..., autocompletion=_complete_setting,
+                              help="Setting name, e.g. homepod_discovery."),
+    value: str = typer.Argument(...),
+) -> None:
+    """Persist a setting into the config file (used by every later run)."""
+    try:
+        path = config_mod.write_config_value(key, value)
+    except KeyError:
+        valid = ", ".join(config_mod.setting_keys())
+        typer.secho(f"unknown setting {key!r}. Valid: {valid}",
+                    fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
+    get_settings.cache_clear()
+    typer.echo(f"set {config_mod.normalize_key(key)} → {value}  ({path})")
+
+
+@config_cmd_app.command("get")
+def config_get(
+    key: str = typer.Argument(..., autocompletion=_complete_setting),
+) -> None:
+    """Show a setting's effective value (config file + env + defaults)."""
+    try:
+        field = config_mod.normalize_key(key)
+    except KeyError:
+        typer.secho(f"unknown setting {key!r}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
+    val = getattr(get_settings(), field)
+    if field in config_mod.SECRET_KEYS and val:
+        val = "***set***"
+    typer.echo(val)
+
+
+@config_cmd_app.command("list")
+def config_list() -> None:
+    """List all settings and their effective values (secrets masked)."""
+    s = get_settings()
+    for k in sorted(config_mod.setting_keys()):
+        v = getattr(s, k)
+        if k in config_mod.SECRET_KEYS:
+            v = "***set***" if v else "(unset)"
+        typer.echo(f"{k:<20} {v}")
+    typer.echo(f"# config file: {config_mod.config_file()}")
 
 
 @migrate_app.command("status")

@@ -1,6 +1,6 @@
 [project]
 name = "homewatch"
-version = "0.4.10"
+version = "0.4.11"
 description = "Correlate Home Assistant / HomePod outages with Apple & HA software releases — local-first CLI + optional daemon, device inventory, on-demand release notes."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -260,6 +260,24 @@ def test_info_shows_db_path(tmp_path, monkeypatch):
     assert "info.sqlite" in runner.invoke(app, ["admin", "info"]).output
 
 
+def test_admin_config_set_get_list(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOMEWATCH_HOME", str(tmp_path))
+    monkeypatch.delenv("HOMEWATCH_HOMEPOD_DISCOVERY", raising=False)  # let the file win
+    get_settings.cache_clear()
+    r = runner.invoke(app, ["admin", "config", "set", "homepod_discovery", "pyatv"])
+    assert r.exit_code == 0
+    assert "HOMEWATCH_HOMEPOD_DISCOVERY=pyatv" in (tmp_path / "env").read_text()
+    # A later run reads it back as the effective value.
+    get_settings.cache_clear()
+    assert "pyatv" in runner.invoke(app, ["admin", "config", "get",
+                                          "homepod_discovery"]).output
+    # list shows keys; secrets are masked.
+    out = runner.invoke(app, ["admin", "config", "list"]).output
+    assert "homepod_discovery" in out and "ha_token" in out and "***" not in out.split("ha_token")[0]
+    # unknown key rejected.
+    assert runner.invoke(app, ["admin", "config", "set", "bogus", "x"]).exit_code == 1
+
+
 def test_admin_migrate_status_and_backup():
     runner.invoke(app, ["sources"])  # triggers get_db → applies migrations
     st = runner.invoke(app, ["admin", "migrate", "status"])

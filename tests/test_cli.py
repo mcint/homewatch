@@ -1,71 +1,85 @@
-"""CLI: the thin HTTP client (outbound calls mocked)."""
+"""CLI: local-first by default, remote when --remote/HOMEWATCH_URL is set."""
 
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from homewatch.cli import app
 from homewatch.config import get_settings
+from homewatch.sources.ha_release import URL as HA_CORE_URL
 
 runner = CliRunner()
-BASE = "http://127.0.0.1:8765"
+FIX = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture(autouse=True)
-def _default_env(monkeypatch):
+def _local_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOMEWATCH_DB", str(tmp_path / "cli.sqlite"))
+    monkeypatch.setenv("HOMEWATCH_HOMEPOD_DISCOVERY", "disabled")
     monkeypatch.delenv("HOMEWATCH_URL", raising=False)
     monkeypatch.delenv("HOMEWATCH_TOKEN", raising=False)
-    monkeypatch.setenv("HOMEWATCH_BIND", "127.0.0.1:8765")
     get_settings.cache_clear()
 
 
-def test_til_down_hits_drop_endpoint(httpx_mock):
+def test_til_writes_directly_then_timeline_shows_it():
+    r = runner.invoke(app, ["til", "down", "homepod-kitchen", "siri dead"])
+    assert r.exit_code == 0, r.output
+    assert "OK 1" in r.output
+    # Same local DB, no server: timeline reflects it.
+    tl = runner.invoke(app, ["timeline", "--format", "json"])
+    items = json.loads(tl.output)["items"]
+    assert any(it["kind"] == "til" and it.get("text") == "siri dead" for it in items)
+
+
+def test_refresh_then_latest(httpx_mock):
+    httpx_mock.add_response(url=HA_CORE_URL, content=(FIX / "ha_core.atom").read_bytes())
+    r = runner.invoke(app, ["refresh", "--source", "ha_core_atom"])
+    assert r.exit_code == 0, r.output
+    assert "ha_core_atom: +2 new" in r.output
+    out = runner.invoke(app, ["latest", "home_assistant_core"])
+    assert "2026.4.3" in out.output
+
+
+def test_show_fetches_notes(httpx_mock):
+    httpx_mock.add_response(url=HA_CORE_URL, content=(FIX / "ha_core.atom").read_bytes())
     httpx_mock.add_response(
-        url=f"{BASE}/til/drop/down/homepod-kitchen?text=siri+dead",
-        text="OK 7\n",
+        url="https://github.com/home-assistant/core/releases/tag/2026.4.3",
+        html='<html><body><div class="markdown-body">Fixed Matter pairing.</div></body></html>',
     )
-    result = runner.invoke(app, ["til", "down", "homepod-kitchen", "siri dead"])
-    assert result.exit_code == 0
-    assert "OK 7" in result.stdout
+    runner.invoke(app, ["refresh", "--source", "ha_core_atom"])
+    r = runner.invoke(app, ["show", "home_assistant_core", "2026.4.3"])
+    assert r.exit_code == 0, r.output
+    assert "Fixed Matter pairing." in r.output
 
 
-def test_til_note_with_tags(httpx_mock):
+def test_sources_lists_streams():
+    r = runner.invoke(app, ["sources"])
+    assert r.exit_code == 0
+    assert "ha_core_atom" in r.output
+    assert "github.com/home-assistant/core" in r.output
+
+
+def test_probe_homepods_disabled_message():
+    r = runner.invoke(app, ["probe", "homepods"])
+    assert r.exit_code == 0
+    assert "no homepods" in r.output
+
+
+def test_remote_mode_uses_daemon(httpx_mock):
     httpx_mock.add_response(
-        url=f"{BASE}/til/drop/note/ha?text=rebooted&tags=upgrade,maybe-fixed",
-        text="OK 8\n",
+        url="http://daemon.test/til/drop/up/homepod-kitchen?text=&tags=&probe=true",
+        text="OK 5\n",
     )
-    result = runner.invoke(
-        app, ["til", "note", "ha", "rebooted", "-t", "upgrade", "-t", "maybe-fixed"]
-    )
-    assert result.exit_code == 0
-    assert "OK 8" in result.stdout
+    r = runner.invoke(app, ["--remote", "http://daemon.test", "til", "up",
+                            "homepod-kitchen"])
+    assert r.exit_code == 0, r.output
+    assert "OK 5" in r.output
 
 
-def test_refresh_prints_counts(httpx_mock):
-    httpx_mock.add_response(
-        url=f"{BASE}/releases/refresh?source=ha_core_atom",
-        method="POST",
-        json={"ha_core_atom": {"new": 2, "seen": 0, "errors": []}},
-    )
-    result = runner.invoke(app, ["refresh", "--source", "ha_core_atom"])
-    assert result.exit_code == 0
-    assert "ha_core_atom: +2 new" in result.stdout
-
-
-def test_uses_homewatch_url_env(httpx_mock, monkeypatch):
-    monkeypatch.setenv("HOMEWATCH_URL", "https://vps.example:9000")
-    get_settings.cache_clear()
-    httpx_mock.add_response(
-        url="https://vps.example:9000/til/drop/up/ha", text="OK 1\n"
-    )
-    result = runner.invoke(app, ["til", "up", "ha"])
-    assert result.exit_code == 0
-
-
-def test_error_exit_code(httpx_mock):
-    httpx_mock.add_response(
-        url=f"{BASE}/til/drop/down/ha", status_code=500, text="boom"
-    )
-    result = runner.invoke(app, ["til", "down", "ha"])
-    assert result.exit_code == 1
+def test_latest_missing_exits_1():
+    r = runner.invoke(app, ["latest", "home_assistant_core"])
+    assert r.exit_code == 1

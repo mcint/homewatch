@@ -49,12 +49,16 @@ def default_db() -> Path:
 
 
 def env_files() -> tuple[str, ...]:
-    """.env locations, lowest-precedence first (later ones win in pydantic)."""
+    """Config-file locations, lowest-precedence first (later ones win in pydantic).
+
+    The per-user XDG config file is named ``env`` (no dot — it lives in a
+    dedicated config dir, so it needn't be hidden); the cwd dev-convenience file
+    stays ``.env``.
+    """
     home = os.environ.get("HOMEWATCH_HOME")
     if home:
-        return (str(Path(home).expanduser() / ".env"),)
-    # cwd .env (dev convenience) then the per-user config .env.
-    return (str(config_root() / ".env"), ".env")
+        return (str(Path(home).expanduser() / "env"),)
+    return (str(config_root() / "env"), ".env")
 
 
 class Settings(BaseSettings):

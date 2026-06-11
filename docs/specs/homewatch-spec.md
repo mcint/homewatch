@@ -457,9 +457,13 @@ HOMEWATCH_USER_AGENT=homewatch/0.3 (+contact)
 lives in a stable per-user place by default, not relative to the cwd:
 
 - `HOMEWATCH_HOME` set → that dir is the data-project root: DB at
-  `$HOMEWATCH_HOME/homewatch.sqlite`, `.env` at `$HOMEWATCH_HOME/.env`.
-- else → XDG: DB under `${XDG_DATA_HOME:-~/.local/share}/homewatch/`, and `.env`
-  read from the cwd and `${XDG_CONFIG_HOME:-~/.config}/homewatch/`.
+  `$HOMEWATCH_HOME/homewatch.sqlite`, config at `$HOMEWATCH_HOME/env`.
+- else → XDG: DB under `${XDG_DATA_HOME:-~/.local/share}/homewatch/`, config from
+  the cwd `.env` and `${XDG_CONFIG_HOME:-~/.config}/homewatch/env`.
+
+The dedicated-config-dir file is named `env` (no leading dot — it's already in
+its own directory); only the cwd dev file keeps `.env`. `homewatch info` lists
+each candidate and whether it was `read` or just `checked, absent`.
 - `HOMEWATCH_DB` always wins for the DB path. `homewatch info` prints what's in
   effect.
 

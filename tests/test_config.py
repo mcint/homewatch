@@ -17,7 +17,16 @@ def test_xdg_default_db(monkeypatch, tmp_path):
 def test_homewatch_home_root(monkeypatch, tmp_path):
     monkeypatch.setenv("HOMEWATCH_HOME", str(tmp_path / "proj"))
     assert config.default_db() == tmp_path / "proj" / "homewatch.sqlite"
-    assert config.env_files() == (str(tmp_path / "proj" / ".env"),)
+    # Dedicated config dirs use a plain 'env' file (no hidden dot).
+    assert config.env_files() == (str(tmp_path / "proj" / "env"),)
+
+
+def test_xdg_config_uses_plain_env(monkeypatch, tmp_path):
+    monkeypatch.delenv("HOMEWATCH_HOME", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    files = config.env_files()
+    assert files[0] == str(tmp_path / "cfg" / "homewatch" / "env")
+    assert files[-1] == ".env"  # cwd dev-convenience file keeps the dot
 
 
 def test_home_is_cwd_independent(monkeypatch, tmp_path):

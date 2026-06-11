@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -464,10 +465,14 @@ def info() -> None:
     """Show effective paths and config (debug 'which DB am I using?')."""
     s = get_settings()
     typer.echo(f"homewatch {__version__}")
-    typer.echo(f"db:          {s.db}  ({'exists' if s.db.exists() else 'new'})")
+    typer.echo(f"db:          {s.db}{'' if s.db.exists() else '  (new)'}")
     typer.echo(f"home:        {s.home or '(unset — XDG default)'}")
     typer.echo(f"config dir:  {config_root()}")
-    typer.echo(f"env files:   {', '.join(env_files())}")
+    typer.echo("config files (later wins):")
+    for p in env_files():
+        # Distinguish files we actually read from paths we only checked.
+        mark = "read" if os.path.exists(p) else "checked, absent"
+        typer.echo(f"  {p}  [{mark}]")
     typer.echo(f"remote:      {_state['remote'] or s.url or '(local)'}")
     import importlib.util as _u
     extras = f"pyatv={_u.find_spec('pyatv') is not None} " \

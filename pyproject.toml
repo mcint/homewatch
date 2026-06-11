@@ -1,11 +1,27 @@
 [project]
 name = "homewatch"
-version = "0.4.5"
-description = "Correlate Home Assistant outages with Apple / HomePod / HA software releases."
+version = "0.4.6"
+description = "Correlate Home Assistant / HomePod outages with Apple & HA software releases — local-first CLI + optional daemon, device inventory, on-demand release notes."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "mcint", email = "loren.p.mc@gmail.com" }]
+keywords = [
+    "home-assistant", "homepod", "homekit", "matter", "apple",
+    "release-tracking", "endoflife", "self-hosted", "cli",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Framework :: FastAPI",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Home Automation",
+    "Topic :: System :: Monitoring",
+]
+# Default install is the lean "version tracker" (release feeds + CLI + daemon).
+# LAN device probing is opt-in via extras — pyatv is heavy (protobuf/miniaudio).
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
@@ -19,11 +35,18 @@ dependencies = [
     "python-multipart>=0.0.18",
 ]
 
+[project.urls]
+Homepage = "https://github.com/mcint/homewatch"
+Repository = "https://github.com/mcint/homewatch"
+Issues = "https://github.com/mcint/homewatch/issues"
+
 [project.optional-dependencies]
-# HomePod LAN probe is heavy (protobuf/miniaudio); install on the LAN agent only.
+# HomePod/Apple LAN probe via pyatv (preferred; heavy).
 probe = ["pyatv>=0.16"]
 # Lighter raw-mDNS fallback if pyatv pulls in too much.
 zeroconf = ["zeroconf>=0.136"]
+# Everything for on-LAN device discovery.
+all = ["pyatv>=0.16", "zeroconf>=0.136"]
 
 [project.scripts]
 homewatch = "homewatch.cli:app"

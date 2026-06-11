@@ -15,11 +15,14 @@ full design.
 ## Quick start (local-first — no server needed)
 
 ```bash
-uv sync                      # create venv, install deps
-cp .env.example .env         # fill in HA url/token, optional bearer
+uv sync                      # create venv, install deps (or: uv sync --extra all)
+cp .env.example .env         # optional: HA url/token, bearer, HOMEWATCH_HOME
 uv run homewatch refresh     # pull all release streams into the local DB
-uv run homewatch timeline    # see releases × probes × TIL, interleaved
+uv run homewatch status      # per device: running version vs latest
+uv run homewatch timeline    # releases × devices × observations, interleaved
 ```
+
+(Or install it as a tool — see [Install](#install) at the bottom.)
 
 The CLI talks straight to the local SQLite file and the upstream feeds. Log an
 observation, pull a single source, read full notes on demand:
@@ -116,3 +119,26 @@ up (see spec §7).
 ```bash
 uv run pytest
 ```
+
+## Install
+
+Not on PyPI — install or run straight from GitHub:
+
+```bash
+# one-off, no install (uv):
+uvx --from git+https://github.com/mcint/homewatch homewatch --help
+
+# install as a CLI tool:
+uv tool install git+https://github.com/mcint/homewatch
+#   …with on-LAN device probing (pyatv):
+uv tool install "homewatch[probe] @ git+https://github.com/mcint/homewatch"
+
+# or pip:
+pip install git+https://github.com/mcint/homewatch
+pip install "homewatch[all] @ git+https://github.com/mcint/homewatch"
+```
+
+The default install is the lean **version tracker** (release feeds + CLI +
+daemon). Add `[probe]` (pyatv), `[zeroconf]`, or `[all]` for on-LAN device
+discovery — `homewatch probe` coaches you if the extra is missing. The package
+is PyPI-ready (metadata + extras) if/when you choose to publish.

@@ -36,7 +36,9 @@ upstream (HomePod dates, network context). Patterns we use, in preference order:
 ## Plan for "graceful" (when we want more than forward-only)
 
 The numbered-`.sql` runner is the right weight for a single-file SQLite tool —
-no ORM, so SQLAlchemy/Alembic would be overkill. To make it graceful:
+no ORM, so SQLAlchemy/Alembic would be overkill. (Alembic — as used in
+open-webui — shines *because* that app is SQLAlchemy-based; adopting it here
+would mean pulling in SQLAlchemy just for migrations.) To make it graceful:
 
 - **Backup before migrate.** Copy `homewatch.sqlite` → `….pre-NNN.bak` before
   applying a new version (cheap; SQLite is one file). Easy safety net without

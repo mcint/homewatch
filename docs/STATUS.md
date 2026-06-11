@@ -3,8 +3,9 @@
 Orientation surface. One screen: where the project is, what works, what's open.
 Details live in [`specs/`](specs/), [`refs/`](refs/), [`sessions/`](sessions/).
 
-**Version:** 0.4.0.  **Shape:** local-first CLI; daemon secondary. One SQLite
-DB, seven release sources, a device registry, on-demand notes.
+**Version:** 0.4.6.  **Shape:** local-first CLI; daemon secondary. One SQLite
+DB, seven release sources, a device registry, on-demand notes. Install/run from
+GitHub (uvx/pip/uv tool — see README); PyPI-ready but not published.
 
 ## The model (deeper simplicity)
 
@@ -30,23 +31,30 @@ release (available upstream)  ⋈  deployed (running on device)  →  timeline (
 - 7 sources: HA core/blog/OS atoms, Apple security + HomePod-notes scrapers,
   Apple developer RSS, **endoflife.date** (Apple-OS dates).
 - Dates: exact → **HomePod≈tvOS** derived → `≤bound`. (refs/products-and-streams)
-- Devices: probes **auto-enroll** (MAC/mDNS identifiers, SSID/IP/subnet), write
-  `enrolled`/`retired` events to the timeline; `status` flags "behind".
-- Data root: XDG by default; `HOMEWATCH_HOME` project root; `HOMEWATCH_DB`
-  override. Config file `env` (XDG) / `.env` (cwd). `homewatch info` shows it.
-- 118 tests green.
+- Devices: probes **auto-enroll** (MAC/mDNS identifiers, SSID/IP/subnet, name),
+  write `enrolled`/`retired` events to the timeline; `devices rename` sets a
+  display name (kept separate from detected); `devices list PATTERN` is a
+  smartcase/regex search across all fields; `status` flags "behind".
+- pyatv detection uses AirPlay TXT + name (not just model) so HomePods aren't
+  missed; `probe homepods --raw [--host IP]` to debug / unicast.
+- `admin migrate status|backup`, `admin info`. Data root: XDG / `HOMEWATCH_HOME`
+  / `HOMEWATCH_DB`; config `env` (XDG) / `.env` (cwd). `homewatch info` shows it.
+- 123 tests green.
 
 ## Open cells / next
 
+- **ESPHome / self-reporting ingest** — a `POST /devices/report` (+ CLI) for
+  devices that report their own version; model already supports `kind=esphome
+  |custom`. Highest-value next.
 - **notify on `watch --until-new`** — currently prints + exits.
 - **`show` via GitHub API** — cleaner release-note bodies than page scraping.
 - **`latest` tie-break** — same-day Apple cross-cycle patches order by id.
-- **LAN probes live** — HA/HomePod probes unit-covered only (need hardware).
-- **ESPHome / self-reporting ingest** — a `POST`/`enroll` path for devices that
-  report their own version (the model already supports `kind=esphome|custom`).
+- **LAN probes live** — HA probe unit-covered only; HomePod verified live.
+- **graceful migrate** — `--backup` exists; down/rollback only if needed (yoyo).
 
 ## Releases
 
 `v0.1.0` daemon-first v1 · `v0.2.x` CLI-first + endoflife + grammar ·
 `v0.3.x` XDG/data-root, relative `--since`, time-flows-down, URL fixes ·
-`v0.4.0` device inventory + `status` + verb×noun groups.
+`v0.4.x` device inventory, `status`, display names + search, pyatv fix,
+admin/migrate, install-from-GitHub.

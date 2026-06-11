@@ -145,9 +145,10 @@ def test_releases_sort_order(httpx_mock):
     runner.invoke(app, ["refresh", "--source", "ha_core_atom"])
     # Default newest-first: 2026.4.3 (Apr) before 2026.5.0b1 (Apr 30)… both stable?
     # ha_core has stable 2026.4.3 and beta 2026.5.0b1; with --all, newest first.
-    lines = [l for l in runner.invoke(app, ["releases", "--all"]).output.splitlines() if l.strip()]
+    args = ["releases", "--since", "0", "--channel", "all"]
+    lines = [l for l in runner.invoke(app, args).output.splitlines() if l.strip()]
     assert lines[0].split()[0] >= lines[-1].split()[0]  # dates descending
-    rev = [l for l in runner.invoke(app, ["releases", "--all", "-r"]).output.splitlines() if l.strip()]
+    rev = [l for l in runner.invoke(app, args + ["-r"]).output.splitlines() if l.strip()]
     assert rev[0].split()[0] <= rev[-1].split()[0]       # ascending with -r
 
 

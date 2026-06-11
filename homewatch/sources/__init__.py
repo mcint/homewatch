@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 
 import httpx
@@ -29,6 +30,8 @@ ALL_SOURCES: list[Source] = [
 
 SOURCES_BY_NAME: dict[str, Source] = {s.name: s for s in ALL_SOURCES}
 
+logger = logging.getLogger("homewatch.sources")
+
 
 def select_sources(name: str | None) -> list[Source]:
     """Resolve ``?source=`` to a source list. ``None``/``*`` means all."""
@@ -48,8 +51,10 @@ async def refresh_source(
     """
     state = load_state(conn, source.name)
     result: dict = {"new": 0, "seen": 0, "errors": []}
+    logger.info("fetching %s", source.name)
     try:
         releases = await source.fetch(client, state)
+        logger.debug("%s returned %d release(s)", source.name, len(releases))
         for rel in releases:
             if upsert_release(conn, rel):
                 result["new"] += 1
@@ -63,9 +68,11 @@ async def refresh_source(
         msg = f"{type(exc).__name__}: {exc}"
         result["errors"].append(msg)
         state.last_status = f"error: {msg}"
+        logger.warning("%s failed: %s", source.name, msg)
     finally:
         state.last_fetched_at = utcnow()
         save_state(conn, state)
+    logger.info("%s: +%d new, %d seen", source.name, result["new"], result["seen"])
     return result
 
 

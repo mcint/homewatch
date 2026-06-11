@@ -39,6 +39,22 @@ We follow the journal camp; `-r` is the escape hatch.
 - [Reversing `ls` listings (`ls -t` / `-r`)](https://www.simplified.guide/linux/file-folder-list-reverse)
   — the newest-first camp, for contrast.
 
+## Verbosity (`-v` count)
+
+Repeatable `-v` (the `curl`/`ssh`/`ansible` idiom), each level widening the net
+— `--debug` is an alias for the top:
+
+| flag      | homewatch | libraries (httpx, pyatv, …) | shows                          |
+|-----------|-----------|-----------------------------|--------------------------------|
+| (none)    | WARNING   | WARNING                     | only problems                  |
+| `-v`      | INFO      | WARNING                     | what this project is doing     |
+| `-vv`     | DEBUG     | INFO                        | + network/library operations   |
+| `-vvv`/`--debug` | DEBUG | DEBUG                    | everything (full lib debug)    |
+
+"this project" = the `homewatch` logger; "libraries" = everything else under the
+root logger. Mapping lives in `homewatch/logconfig.py`; `serve` passes the same
+level to uvicorn. Logs go to stderr, so stdout stays pipeable.
+
 ## Other conventions in use
 
 - **Relative time** (`--since`) parses systemd-style spans — `3M 2w 1d 2h 2m

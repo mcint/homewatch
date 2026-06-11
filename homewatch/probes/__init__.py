@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,8 @@ from .homepod import discover_raw, probe_homepods
 
 if TYPE_CHECKING:
     from ..config import Settings
+
+logger = logging.getLogger("homewatch.probes")
 
 __all__ = ["probe_ha", "probe_homepods", "discover_raw", "insert_probe",
            "history", "autoprobe", "observe"]
@@ -57,6 +60,8 @@ def observe(
     still recorded as probe rows (HA down is signal) but don't enroll.
     """
     ident = _device_identity(probe)
+    logger.info("probe %s %s → %s", ident["kind"], ident["device_id"],
+                probe.version or f"FAILED ({probe.error})")
     probe.device_id = ident["device_id"]
     probe.mac = probe.mac or ident["mac"]
     probe.ssid = probe.ssid or ssid

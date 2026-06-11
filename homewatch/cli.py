@@ -18,7 +18,7 @@ from typing import Awaitable, Callable
 import httpx
 import typer
 
-from . import __version__
+from . import __version__, logconfig
 from .client import Backend, get_backend
 from .config import config_root, env_files, get_settings
 from .models import DEVICE_KINDS, PRODUCT_LABELS, PRODUCT_PAGE, PRODUCTS
@@ -66,7 +66,7 @@ app.add_typer(probe_app, name="probe", rich_help_panel=P_DEPLOYED)
 app.add_typer(devices_app, name="devices", rich_help_panel=P_DEPLOYED)
 app.add_typer(admin_app, name="admin", rich_help_panel=P_META)
 
-_state: dict[str, str | None] = {"remote": None}
+_state: dict[str, object] = {"remote": None, "verbosity": 0}
 
 
 # systemd/journalctl-style relative time. Case matters: M=months, m=minutes.
@@ -188,12 +188,22 @@ def _main(
     remote: str = typer.Option(
         None, "--remote", help="Drive a daemon at URL instead of the local DB."
     ),
+    verbose: int = typer.Option(
+        0, "-v", "--verbose", count=True,
+        help="Log more: -v info (this project), -vv +library ops, -vvv debug all."
+    ),
+    debug: bool = typer.Option(
+        False, "--debug", help="Maximum logging (= -vvv)."
+    ),
     version: bool = typer.Option(
         None, "-V", "--version", callback=_version_callback, is_eager=True,
         help="Show version and exit.",
     ),
 ) -> None:
+    verbosity = 3 if debug else verbose
     _state["remote"] = remote
+    _state["verbosity"] = verbosity
+    logconfig.setup(verbosity)
 
 
 def _run(fn: Callable[[Backend], Awaitable]):
@@ -720,7 +730,8 @@ def serve(reload: bool = typer.Option(False, help="Auto-reload (dev).")) -> None
 
     settings = get_settings()
     uvicorn.run("homewatch.app:app", host=settings.bind_host,
-                port=settings.bind_port, reload=reload)
+                port=settings.bind_port, reload=reload,
+                log_level=logconfig.uvicorn_level(_state["verbosity"]))
 
 
 if __name__ == "__main__":

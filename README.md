@@ -91,10 +91,13 @@ LAN that posts results up (see spec §7).
 
 ## Docs
 
-- [`docs/specs/`](docs/specs/) — design intent (the spec).
+- [`docs/STATUS.md`](docs/STATUS.md) — orientation: where it is, what works, what's open.
+- [`docs/specs/`](docs/specs/) — design intent (the spec); §11.4 is the CLI
+  verb×noun grammar.
 - [`docs/refs/`](docs/refs/) — durable reference: [product vocabulary, update
   streams, tvOS↔HomePod, date precision](docs/refs/products-and-streams.md).
-- [`docs/sessions/`](docs/sessions/) — per-session status / reports / open items.
+- [`docs/sessions/`](docs/sessions/) — per-session reports + the
+  [REQUESTS log](docs/sessions/REQUESTS.md).
 
 ## Development
 

@@ -25,6 +25,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from . import notes
 from . import probes as probes_mod
 from . import sources, til, timeline
 from .config import Settings, get_settings
@@ -128,6 +129,28 @@ def latest_release(conn: Conn, product: str, channel: str = "stable") -> dict:
     if row is None:
         raise HTTPException(status_code=404, detail=f"no releases for {product}")
     return _release_dict(row)
+
+
+@releases_router.get("/show")
+async def show_release(
+    conn: Conn,
+    client: Client,
+    product: str,
+    version: str | None = None,
+    channel: str = "stable",
+) -> dict:
+    if version:
+        row = conn.execute(
+            "SELECT * FROM releases WHERE product=? AND version=? AND channel=?",
+            (product, version, channel),
+        ).fetchone()
+    else:
+        row = base.latest_release(conn, product, channel)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no release for {product}")
+    out = _release_dict(row)
+    out["notes_full"] = await notes.fetch_full_notes(client, row)
+    return out
 
 
 @releases_router.post("/refresh")
@@ -266,27 +289,6 @@ def til_delete(conn: Conn, event_id: int) -> dict:
 drop_router = APIRouter(prefix="/til/drop", tags=["til"])
 
 
-async def _maybe_autoprobe(
-    conn: sqlite3.Connection, client: httpx.AsyncClient, target: str | None,
-    settings: Settings,
-) -> None:
-    """Best-effort probe of the named target (spec §9.2). Never raises."""
-    if not target:
-        return
-    t = target.lower()
-    try:
-        if "ha" in t.split("+") or t == "ha":
-            probe = await probes_mod.probe_ha(
-                settings.ha_url, settings.ha_token, client=client, timeout=5
-            )
-            probes_mod.insert_probe(conn, probe)
-        if t.startswith("homepod") and settings.homepod_discovery != "disabled":
-            for probe in await probes_mod.probe_homepods(settings.homepod_discovery):
-                probes_mod.insert_probe(conn, probe)
-    except Exception:  # noqa: BLE001 — autoprobe is a bonus, must not break the drop
-        pass
-
-
 @drop_router.get("/{kind}/{target}")
 async def til_drop(
     request: Request,
@@ -307,7 +309,7 @@ async def til_drop(
         raise HTTPException(status_code=400, detail=str(exc))
 
     if probe:
-        await _maybe_autoprobe(conn, client, target, settings)
+        await probes_mod.autoprobe(conn, client, target, settings)
 
     # Browser → show the log; curl/plain → "OK <id>" so it composes with shells.
     accept = request.headers.get("accept", "")

@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     db: Path = Path("data/homewatch.sqlite")
     # Optional bearer; if set, all routes except GET /til/drop/... require it.
     token: str | None = None
+    # If set, the CLI drives this remote daemon instead of the local DB (§11.1).
+    url: str | None = None
 
     ha_url: str = "http://hass.local:8123"
     ha_token: str | None = None

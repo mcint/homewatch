@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from typing import TYPE_CHECKING
+
+import httpx
 
 from ..db import utcnow
 from ..models import Probe
 from .ha import probe_ha
 from .homepod import probe_homepods
 
-__all__ = ["probe_ha", "probe_homepods", "insert_probe", "history"]
+if TYPE_CHECKING:
+    from ..config import Settings
+
+__all__ = ["probe_ha", "probe_homepods", "insert_probe", "history", "autoprobe"]
 
 
 def insert_probe(conn: sqlite3.Connection, probe: Probe) -> int:
@@ -31,6 +37,36 @@ def insert_probe(conn: sqlite3.Connection, probe: Probe) -> int:
         ),
     )
     return int(cur.lastrowid)
+
+
+async def autoprobe(
+    conn: sqlite3.Connection,
+    client: httpx.AsyncClient,
+    target: str | None,
+    settings: "Settings",
+) -> list[int]:
+    """Best-effort probe of the named target, persisting any rows (spec §9.2).
+
+    Fires when a TIL target names HA (``ha`` / ``ha+homepod``) or a HomePod
+    (``homepod*``, only if discovery is enabled). Never raises — auto-probe is a
+    bonus that must not break the write that triggered it. Returns inserted ids.
+    """
+    ids: list[int] = []
+    if not target:
+        return ids
+    t = target.lower()
+    try:
+        if t == "ha" or "ha" in t.split("+"):
+            probe = await probe_ha(
+                settings.ha_url, settings.ha_token, client=client, timeout=5
+            )
+            ids.append(insert_probe(conn, probe))
+        if t.startswith("homepod") and settings.homepod_discovery != "disabled":
+            for probe in await probe_homepods(settings.homepod_discovery):
+                ids.append(insert_probe(conn, probe))
+    except Exception:  # noqa: BLE001 — bonus probe, must not break the caller
+        pass
+    return ids
 
 
 def history(

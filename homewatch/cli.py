@@ -539,6 +539,9 @@ def devices_show_cmd(device_id: str) -> None:
         typer.secho(f"no device {device_id!r}", fg=typer.colors.YELLOW, err=True)
         raise typer.Exit(1)
     for k, v in d.items():
+        if k == "identifiers" and isinstance(v, dict):
+            # Drop identifiers that just echo the device_id (e.g. mac == id).
+            v = {ik: iv for ik, iv in v.items() if iv != d.get("device_id")}
         typer.echo(f"{k}: {v}")
 
 
@@ -662,7 +665,12 @@ def products() -> None:
 def _print_info() -> None:
     s = get_settings()
     typer.echo(f"homewatch {__version__}")
-    typer.echo(f"db:          {s.db}{'' if s.db.exists() else '  (new)'}")
+    if s.db.exists():
+        from datetime import datetime, timezone
+        mt = datetime.fromtimestamp(s.db.stat().st_mtime, tz=timezone.utc)
+        typer.echo(f"db:          {s.db}  (mtime {mt:%Y-%m-%dT%H:%M:%SZ})")
+    else:
+        typer.echo(f"db:          {s.db}  (new)")
     typer.echo(f"home:        {s.home or '(unset — XDG default)'}")
     typer.echo(f"config dir:  {config_root()}")
     typer.echo("config files (later wins):")

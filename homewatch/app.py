@@ -198,7 +198,8 @@ probe_router = APIRouter(prefix="/probe", tags=["probe"], dependencies=auth)
 @probe_router.post("/ha")
 async def probe_ha(conn: Conn, client: Client, settings: Cfg) -> dict:
     probe = await probes_mod.probe_ha(settings.ha_url, settings.ha_token, client=client)
-    pid = probes_mod.observe(conn, probe, **netinfo.context())
+    ctx = netinfo.context()
+    pid = probes_mod.observe(conn, probe, ssid=ctx["ssid"], subnet=ctx["subnet"])
     return {"id": pid, "version": probe.version, "ok": probe.error is None,
             "error": probe.error}
 
@@ -209,7 +210,7 @@ async def probe_homepods(conn: Conn, settings: Cfg) -> dict:
     ctx = netinfo.context()
     out = []
     for probe in found:
-        pid = probes_mod.observe(conn, probe, **ctx)
+        pid = probes_mod.observe(conn, probe, ssid=ctx["ssid"], subnet=ctx["subnet"])
         out.append({"id": pid, "target_id": probe.target_id, "version": probe.version})
     return {"discovery": settings.homepod_discovery, "homepods": out}
 

@@ -13,8 +13,11 @@ is transport-agnostic.
 
 from __future__ import annotations
 
+import logging
+import os
 import sqlite3
 from dataclasses import asdict
+from datetime import datetime, timezone
 from typing import Protocol
 
 import httpx
@@ -24,6 +27,9 @@ from . import netinfo, notes, probes, sources, til, timeline
 from .config import Settings
 from .db import checkpoint, get_db
 from .sources import base
+
+
+logger = logging.getLogger("homewatch.client")
 
 
 def _row_dict(row: sqlite3.Row) -> dict:
@@ -66,6 +72,13 @@ class LocalBackend:
 
     async def __aenter__(self) -> "LocalBackend":
         self.conn = get_db(self.settings.db)
+        try:
+            mtime = datetime.fromtimestamp(
+                os.path.getmtime(self.settings.db), tz=timezone.utc
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except OSError:
+            mtime = "?"
+        logger.info("db %s (mtime %s)", self.settings.db, mtime)
         self.client = httpx.AsyncClient(
             headers={"User-Agent": self.settings.user_agent},
             follow_redirects=True,
@@ -139,7 +152,8 @@ class LocalBackend:
         probe = await probes.probe_ha(
             self.settings.ha_url, self.settings.ha_token, client=self.client
         )
-        pid = probes.observe(self.conn, probe, **netinfo.context())
+        ctx = netinfo.context()
+        pid = probes.observe(self.conn, probe, ssid=ctx["ssid"], subnet=ctx["subnet"])
         return {"id": pid, "version": probe.version, "ok": probe.error is None,
                 "error": probe.error}
 
@@ -148,7 +162,7 @@ class LocalBackend:
         ctx = netinfo.context()
         out = []
         for probe in found:
-            pid = probes.observe(self.conn, probe, **ctx)
+            pid = probes.observe(self.conn, probe, ssid=ctx["ssid"], subnet=ctx["subnet"])
             out.append({"id": pid, "target_id": probe.target_id,
                         "version": probe.version})
         return out

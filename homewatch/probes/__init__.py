@@ -29,13 +29,20 @@ def _device_identity(probe: Probe) -> dict:
     extra = probe.extra or {}
     if probe.target_kind == "homepod":
         mac = probe.mac or extra.get("mac") or extra.get("deviceid") or probe.target_id
+        device_id = probe.target_id or mac
+        # A friendly name only — never the MAC/identifier (which scans sometimes
+        # report as the name). None means "leave the stored name as-is".
+        raw = extra.get("name")
+        friendly = raw if raw and raw not in (mac, device_id) else None
+        identifiers = {"mac": mac}
+        if friendly:
+            identifiers["mdns"] = friendly
         return {
-            "device_id": probe.target_id or mac,
+            "device_id": device_id,
             "kind": "homepod",
             "product": "homepod_software",
-            "name": extra.get("name") or probe.target_id or mac,
-            "identifiers": {k: v for k, v in
-                            {"mac": mac, "mdns": extra.get("name")}.items() if v},
+            "name": friendly,
+            "identifiers": identifiers,
             "mac": mac,
         }
     install = (extra.get("installation_type") or "").lower()
@@ -51,13 +58,16 @@ def _device_identity(probe: Probe) -> dict:
 
 def observe(
     conn: sqlite3.Connection, probe: Probe, *,
-    ssid: str | None = None, subnet: str | None = None, ip: str | None = None,
+    ssid: str | None = None, subnet: str | None = None,
 ) -> int:
     """Persist a probe row AND auto-enroll/update its device (spec §13).
 
     A successful probe is a sighting: it upserts the device (last_seen, version,
     network context) and writes an `enrolled` event on first sight. Failures are
     still recorded as probe rows (HA down is signal) but don't enroll.
+
+    ``ssid``/``subnet`` describe the *prober's* network; the device IP comes
+    from the probe itself (the prober's own IP is not the device's).
     """
     ident = _device_identity(probe)
     logger.info("probe %s %s → %s", ident["kind"], ident["device_id"],
@@ -66,7 +76,6 @@ def observe(
     probe.mac = probe.mac or ident["mac"]
     probe.ssid = probe.ssid or ssid
     probe.subnet = probe.subnet or subnet
-    probe.ip = probe.ip or ip
     if probe.error is None:
         devices.record_sighting(
             conn, device_id=ident["device_id"], kind=ident["kind"],

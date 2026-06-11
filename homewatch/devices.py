@@ -88,8 +88,9 @@ def enroll(
             "INSERT INTO devices"
             " (device_id, kind, product, name, identifiers, enrolled_at, status)"
             " VALUES (?, ?, ?, ?, ?, ?, 'active')",
-            (device_id, kind, product, name or device_id,
-             json.dumps(identifiers or {}), now),
+            # name may be NULL (no friendly name yet) — list/display fall back to
+            # device_id, so we don't echo the MAC in the name column.
+            (device_id, kind, product, name, json.dumps(identifiers or {}), now),
         )
         _log_event(conn, "enrolled", name or device_id,
                    f"enrolled {kind} {name or device_id}")

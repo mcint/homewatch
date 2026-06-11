@@ -99,7 +99,7 @@ def test_refresh_unknown_source_404(client):
 def test_releases_sources_status(client):
     out = client.get("/releases/sources").json()["sources"]
     names = {s["name"] for s in out}
-    assert "ha_core_atom" in names and len(out) == 6
+    assert "ha_core_atom" in names and "endoflife" in names and len(out) == 7
 
 
 def test_probe_ha_route(client, httpx_mock):

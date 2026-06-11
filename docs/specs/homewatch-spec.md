@@ -239,6 +239,23 @@ with `(url, fetched_at, sha256, body_gz)`. `/releases/refresh?diff=true`
 returns a unified diff of the body when the hash changes. This is just
 "urlwatch but inline in our DB" — don't run actual urlwatch as a sidecar.
 
+### 3.8 endoflife.date — authoritative Apple-OS dates (API)
+
+- **URL:** `https://endoflife.date/api/{slug}.json` for
+  `ios|ipados|macos|tvos|watchos|visionos`.
+- **Why:** clean machine-readable *dates* — per cycle a `releaseDate` (the
+  `X.0` ship date) and the cycle's `latest` patch + `latestReleaseDate`, plus
+  `eol`. This is the fix for Apple OS versions we discover without a date
+  (notably tvOS), and — since **HomePod software is tvOS-based and shares tvOS
+  version numbers** — tvOS dates are reused to date HomePod releases at display
+  time (see §12.3). endoflife.date does **not** carry HomePod or Home Assistant.
+- **Parse:** JSON. Emit two dated releases per cycle: `{cycle}.0` (releaseDate)
+  and `latest` (latestReleaseDate). These gap-fill dates onto versions other
+  sources already saw and add the major-release dates outright.
+- **products:** `ios`, `ipados`, `macos`, `tvos`, `watchos`, `visionos`.
+- **Tolerance:** per-product errors are collected into a warning status, never
+  abort the batch (one product 404ing shouldn't lose the other five).
+
 ---
 
 ## 4. LAN probes
@@ -679,6 +696,21 @@ Every release row carries a `url` into the upstream "what's new" stream, and
 | Apple security        | `support.apple.com/en-us/100100`                                   |
 | Apple developer       | `developer.apple.com/news/releases/` (rss)                         |
 | HomePod Software      | `support.apple.com/en-us/108045`                                   |
+| Apple OS dates        | `endoflife.date/api/{ios,ipados,macos,tvos,watchos,visionos}`      |
 
 These are the canonical Apple/HA update streams; `homewatch sources` is the
 one place to see them and whether our copy is fresh.
+
+### 12.3 Date precision & derived dates
+
+Not every release we discover has a publishable date. Handling, in order:
+
+1. **Exact** — from a feed `pubDate`, the Apple security table, or endoflife.
+2. **Derived (HomePod ← tvOS)** — a HomePod release with no date inherits the
+   date of the same-versioned tvOS release (HomePod tracks tvOS), shown as
+   `≈DATE (tracks tvOS)`.
+3. **Bound** — anything still undated is shown as `≤DATE` using our
+   `discovered_at` (we know it existed by the time we first saw it).
+
+This lives in the display layer (`timeline.derive_date`); the stored
+`released_at` is left NULL when unknown rather than fabricated.

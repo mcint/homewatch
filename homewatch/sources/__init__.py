@@ -10,6 +10,7 @@ from ..db import utcnow
 from .apple_developer import AppleDeveloperSource
 from .apple_security import AppleSecuritySource
 from .base import Source, load_state, save_state, upsert_release
+from .endoflife import EndOfLifeSource
 from .ha_blog import HABlogSource
 from .ha_os import HAOSSource
 from .ha_release import HAReleaseSource
@@ -23,6 +24,7 @@ ALL_SOURCES: list[Source] = [
     AppleSecuritySource(),
     AppleDeveloperSource(),
     HomePodNotesSource(),
+    EndOfLifeSource(),
 ]
 
 SOURCES_BY_NAME: dict[str, Source] = {s.name: s for s in ALL_SOURCES}

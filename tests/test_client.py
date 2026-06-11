@@ -49,7 +49,7 @@ async def test_local_latest_and_sources(tmp_path, httpx_mock):
         assert latest["version"] == "2026.4.3"
 
         srcs = await b.sources()
-        assert len(srcs) == 6
+        assert len(srcs) == 7
         core = next(s for s in srcs if s["name"] == "ha_core_atom")
         assert core["url"] == HA_CORE_URL
         assert core["last_status"] == "ok"
